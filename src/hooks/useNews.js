@@ -105,6 +105,10 @@ export const useNews = () => {
 
                         // Limiter à 200 articles max
                         const combined = [...uniqueNewArticles, ...prevNews];
+
+                        // ✅ IMPORTANT : Trier par date décroissante
+                        combined.sort((a, b) => b.timestamp - a.timestamp);
+
                         return combined.slice(0, 200);
                     });
 
@@ -115,7 +119,14 @@ export const useNews = () => {
                 // Premier chargement ou refresh forcé
                 console.log('📥 Chargement initial des articles');
 
-                const result = await db.articles.getAll({ limit: 200 });
+                // ✅ CORRECTION : Ajouter l'ordre par date décroissante
+                const result = await db.articles.getAll({
+                    limit: 200,
+                    orderBy: {
+                        column: 'published_at',
+                        ascending: false
+                    }
+                });
                 data = result.data;
                 supabaseError = result.error;
 
@@ -123,6 +134,10 @@ export const useNews = () => {
 
                 // Convertir et définir les articles
                 const convertedNews = (data || []).map(convertArticleFromSupabase);
+
+                // ✅ S'assurer que les articles sont triés par date décroissante
+                convertedNews.sort((a, b) => b.timestamp - a.timestamp);
+
                 setNews(convertedNews);
 
                 // Garder le timestamp du plus récent
@@ -202,7 +217,12 @@ export const useNews = () => {
 
             // Ajouter directement l'article au début de la liste
             const convertedArticle = convertArticleFromSupabase(data);
-            setNews(prev => [convertedArticle, ...prev].slice(0, 200));
+            setNews(prev => {
+                const updated = [convertedArticle, ...prev];
+                // ✅ Trier par date décroissante
+                updated.sort((a, b) => b.timestamp - a.timestamp);
+                return updated.slice(0, 200);
+            });
 
             return convertedArticle;
         } catch (err) {
@@ -326,7 +346,9 @@ export const useNews = () => {
             );
         }
 
-        // Déjà triées par date lors du chargement
+        // ✅ S'assurer que le tri est maintenu
+        filtered.sort((a, b) => b.timestamp - a.timestamp);
+
         return filtered;
     }, [news, selectedCategory, selectedTags]);
 
@@ -410,6 +432,19 @@ export const useNews = () => {
         );
     }, [news]);
 
+    // 🆕 Fonction helper pour formater les dates en heure locale
+    const formatDate = useCallback((dateString) => {
+        const date = new Date(dateString);
+        return date.toLocaleString('fr-FR', {
+            timeZone: 'Europe/Paris',
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    }, []);
+
     return {
         // État
         news,
@@ -432,7 +467,8 @@ export const useNews = () => {
         clearTags,
         searchNews,
         getNewsStats,
-        getStats
+        getStats,
+        formatDate // 🆕 Exposer la fonction de formatage
     };
 };
 

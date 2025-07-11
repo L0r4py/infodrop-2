@@ -97,31 +97,46 @@ export const auth = {
 export const db = {
     // Articles
     articles: {
-        getAll: async (filters = {}) => {
+        getAll: async (options = {}) => {
             if (!supabase) throw new Error('Supabase non configuré');
 
             let query = supabase
                 .from('articles')
                 .select('*');
 
-            // 🔥 AJOUT IMPORTANT : Filtrer par les 24 dernières heures
-            const twentyFourHoursAgo = new Date();
-            twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
-            query = query.gte('published_at', twentyFourHoursAgo.toISOString());
+            // 🔥 AJOUT IMPORTANT : Filtrer par les 24 dernières heures par défaut
+            if (options.includeOld !== true) {
+                const twentyFourHoursAgo = new Date();
+                twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
+                query = query.gte('published_at', twentyFourHoursAgo.toISOString());
+            }
 
-            // Tri par date décroissante (plus récent en premier)
-            query = query.order('published_at', { ascending: false });
+            // Appliquer le tri (support de l'option orderBy)
+            if (options.orderBy) {
+                query = query.order(options.orderBy.column, {
+                    ascending: options.orderBy.ascending ?? false
+                });
+            } else {
+                // Tri par défaut : plus récent en premier
+                query = query.order('published_at', { ascending: false });
+            }
 
             // Appliquer les filtres
-            if (filters.category && filters.category !== 'all') {
-                query = query.eq('category', filters.category);
+            if (options.category && options.category !== 'all') {
+                query = query.eq('category', options.category);
             }
-            if (filters.orientation) {
-                query = query.eq('orientation', filters.orientation);
+            if (options.orientation) {
+                query = query.eq('orientation', options.orientation);
+            }
+            if (options.source) {
+                query = query.eq('source_name', options.source);
+            }
+            if (options.tags && options.tags.length > 0) {
+                query = query.contains('tags', options.tags);
             }
 
-            // 🔥 LIMITE RAISONNABLE : 200 au lieu de 1000
-            const limit = filters.limit || 200;
+            // Limite (200 par défaut)
+            const limit = options.limit || 200;
             query = query.limit(limit);
 
             return await query;
@@ -131,14 +146,12 @@ export const db = {
         getNewArticles: async (sinceTimestamp) => {
             if (!supabase) throw new Error('Supabase non configuré');
 
-            let query = supabase
+            return await supabase
                 .from('articles')
                 .select('*')
                 .gt('published_at', sinceTimestamp)
                 .order('published_at', { ascending: false })
                 .limit(50); // Max 50 nouveaux articles à la fois
-
-            return await query;
         },
 
         getById: async (id) => {
@@ -183,6 +196,24 @@ export const db = {
                 .eq('id', id);
         },
 
+        // 🔥 NOUVELLE FONCTION : Incrémenter les vues
+        incrementViews: async (id) => {
+            if (!supabase) throw new Error('Supabase non configuré');
+
+            const { data: article } = await supabase
+                .from('articles')
+                .select('views')
+                .eq('id', id)
+                .single();
+
+            if (article) {
+                return await supabase
+                    .from('articles')
+                    .update({ views: (article.views || 0) + 1 })
+                    .eq('id', id);
+            }
+        },
+
         // 🔥 NOUVELLE FONCTION : Obtenir les stats
         getStats: async () => {
             if (!supabase) throw new Error('Supabase non configuré');
@@ -190,11 +221,13 @@ export const db = {
             const twentyFourHoursAgo = new Date();
             twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
 
+            // Total des articles des 24 dernières heures
             const { count: totalCount } = await supabase
                 .from('articles')
                 .select('*', { count: 'exact', head: true })
                 .gte('published_at', twentyFourHoursAgo.toISOString());
 
+            // Sources uniques actives
             const { data: sources } = await supabase
                 .from('articles')
                 .select('source_name')
@@ -202,10 +235,36 @@ export const db = {
 
             const uniqueSources = new Set(sources?.map(s => s.source_name) || []);
 
+            // Stats par orientation
+            const { data: orientations } = await supabase
+                .from('articles')
+                .select('orientation')
+                .gte('published_at', twentyFourHoursAgo.toISOString());
+
+            const orientationCounts = {};
+            orientations?.forEach(item => {
+                const orientation = item.orientation || 'neutre';
+                orientationCounts[orientation] = (orientationCounts[orientation] || 0) + 1;
+            });
+
             return {
                 total_articles: totalCount || 0,
-                active_sources: uniqueSources.size
+                active_sources: uniqueSources.size,
+                by_orientation: orientationCounts
             };
+        },
+
+        // 🔥 NOUVELLE FONCTION : Nettoyer les anciens articles
+        cleanOldArticles: async (hoursToKeep = 24) => {
+            if (!supabase) throw new Error('Supabase non configuré');
+
+            const cutoffDate = new Date();
+            cutoffDate.setHours(cutoffDate.getHours() - hoursToKeep);
+
+            return await supabase
+                .from('articles')
+                .delete()
+                .lt('published_at', cutoffDate.toISOString());
         }
     },
 
@@ -256,6 +315,25 @@ export const db = {
                 .eq('id', id)
                 .select()
                 .single();
+        },
+
+        toggleActive: async (id) => {
+            if (!supabase) throw new Error('Supabase non configuré');
+
+            const { data: source } = await supabase
+                .from('sources')
+                .select('active')
+                .eq('id', id)
+                .single();
+
+            if (source) {
+                return await supabase
+                    .from('sources')
+                    .update({ active: !source.active })
+                    .eq('id', id)
+                    .select()
+                    .single();
+            }
         }
     },
 
@@ -281,6 +359,25 @@ export const db = {
                 })
                 .select()
                 .single();
+        },
+
+        incrementIP: async (userId, points) => {
+            if (!supabase) throw new Error('Supabase non configuré');
+
+            const { data: stats } = await supabase
+                .from('user_stats')
+                .select('ip')
+                .eq('user_id', userId)
+                .single();
+
+            if (stats) {
+                return await supabase
+                    .from('user_stats')
+                    .update({ ip: (stats.ip || 0) + points })
+                    .eq('user_id', userId)
+                    .select()
+                    .single();
+            }
         }
     },
 
@@ -295,16 +392,31 @@ export const db = {
                     article_id: articleId,
                     orientation: orientation,
                     read_at: new Date().toISOString()
-                }]);
+                }])
+                .select()
+                .single();
         },
 
-        getByUser: async (userId) => {
+        getByUser: async (userId, limit = 100) => {
             if (!supabase) throw new Error('Supabase non configuré');
             return await supabase
                 .from('article_reads')
-                .select('*')
+                .select('*, articles(*)')
                 .eq('user_id', userId)
-                .order('read_at', { ascending: false });
+                .order('read_at', { ascending: false })
+                .limit(limit);
+        },
+
+        checkIfRead: async (userId, articleId) => {
+            if (!supabase) throw new Error('Supabase non configuré');
+            const { data } = await supabase
+                .from('article_reads')
+                .select('id')
+                .eq('user_id', userId)
+                .eq('article_id', articleId)
+                .single();
+
+            return !!data;
         }
     },
 
@@ -314,7 +426,7 @@ export const db = {
             if (!supabase) throw new Error('Supabase non configuré');
             return await supabase
                 .from('referral_codes')
-                .select('*')
+                .select('*, user:user_id(email)')
                 .eq('code', code)
                 .eq('is_active', true)
                 .single();
@@ -322,7 +434,7 @@ export const db = {
 
         create: async (userId) => {
             if (!supabase) throw new Error('Supabase non configuré');
-            const code = `INF-${Math.random().toString(36).substr(2, 4).toUpperCase()}`;
+            const code = `INF-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
             return await supabase
                 .from('referral_codes')
                 .insert([{
@@ -333,16 +445,134 @@ export const db = {
                 }])
                 .select()
                 .single();
+        },
+
+        incrementUses: async (code) => {
+            if (!supabase) throw new Error('Supabase non configuré');
+
+            const { data: referral } = await supabase
+                .from('referral_codes')
+                .select('uses_count, max_uses')
+                .eq('code', code)
+                .single();
+
+            if (referral && referral.uses_count < referral.max_uses) {
+                return await supabase
+                    .from('referral_codes')
+                    .update({
+                        uses_count: referral.uses_count + 1,
+                        is_active: referral.uses_count + 1 < referral.max_uses
+                    })
+                    .eq('code', code);
+            }
+        }
+    },
+
+    // Badges et achievements
+    badges: {
+        getAll: async () => {
+            if (!supabase) throw new Error('Supabase non configuré');
+            return await supabase
+                .from('badges')
+                .select('*')
+                .order('cost');
+        },
+
+        getUserBadges: async (userId) => {
+            if (!supabase) throw new Error('Supabase non configuré');
+            return await supabase
+                .from('user_badges')
+                .select('*, badge:badge_id(*)')
+                .eq('user_id', userId);
+        },
+
+        purchase: async (userId, badgeId) => {
+            if (!supabase) throw new Error('Supabase non configuré');
+            return await supabase
+                .from('user_badges')
+                .insert([{
+                    user_id: userId,
+                    badge_id: badgeId,
+                    purchased_at: new Date().toISOString()
+                }])
+                .select()
+                .single();
+        }
+    },
+
+    achievements: {
+        getAll: async () => {
+            if (!supabase) throw new Error('Supabase non configuré');
+            return await supabase
+                .from('achievements')
+                .select('*')
+                .order('points');
+        },
+
+        getUserAchievements: async (userId) => {
+            if (!supabase) throw new Error('Supabase non configuré');
+            return await supabase
+                .from('user_achievements')
+                .select('*, achievement:achievement_id(*)')
+                .eq('user_id', userId);
+        },
+
+        unlock: async (userId, achievementId) => {
+            if (!supabase) throw new Error('Supabase non configuré');
+            return await supabase
+                .from('user_achievements')
+                .insert([{
+                    user_id: userId,
+                    achievement_id: achievementId,
+                    unlocked_at: new Date().toISOString()
+                }])
+                .select()
+                .single();
         }
     }
 };
 
-// Fonction RPC pour incrémenter les vues
+// Fonction RPC pour incrémenter les vues (si elle existe)
 export const incrementArticleViews = async (articleId) => {
     if (!supabase) throw new Error('Supabase non configuré');
-    return await supabase.rpc('increment_article_views', {
-        article_id: articleId
-    });
+
+    try {
+        return await supabase.rpc('increment_article_views', {
+            article_id: articleId
+        });
+    } catch (error) {
+        // Si la fonction RPC n'existe pas, utiliser la méthode standard
+        return await db.articles.incrementViews(articleId);
+    }
+};
+
+// Fonction pour obtenir les stats globales
+export const getGlobalStats = async () => {
+    if (!supabase) throw new Error('Supabase non configuré');
+
+    try {
+        const { data, error } = await supabase.rpc('get_global_stats');
+        if (error) throw error;
+        return data;
+    } catch (error) {
+        // Fallback si la fonction RPC n'existe pas
+        const articleStats = await db.articles.getStats();
+        const { count: totalSources } = await supabase
+            .from('sources')
+            .select('*', { count: 'exact', head: true })
+            .eq('active', true);
+
+        const { count: totalUsers } = await supabase
+            .from('user_stats')
+            .select('*', { count: 'exact', head: true });
+
+        return {
+            total_articles: articleStats.total_articles,
+            total_sources: totalSources || 0,
+            total_users: totalUsers || 0,
+            articles_last_24h: articleStats.total_articles
+        };
+    }
 };
 
 // Export par défaut
