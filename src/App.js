@@ -45,6 +45,7 @@ import { useNews } from './hooks/useNews';
 // Data
 import { grades } from './data/rewards';
 
+
 // Composant principal de l'application
 const InfodropApp = () => {
   const { darkMode } = useTheme();

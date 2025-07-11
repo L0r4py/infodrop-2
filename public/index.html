@@ -98,6 +98,10 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="dns-prefetch" href="https://api.coingecko.com" />
 
+  <!-- DNS Prefetch pour les APIs utilisées -->
+  <link rel="dns-prefetch" href="https://yvmqznrpwbvkxrphdvwl.supabase.co">
+  <link rel="preconnect" href="https://yvmqznrpwbvkxrphdvwl.supabase.co">
+
   <!-- iOS Splash Screens (optionnel mais recommandé) -->
   <!-- iPhone Xs Max (1242px x 2688px) -->
   <link rel="apple-touch-startup-image"
@@ -171,6 +175,35 @@
 
     .app-loader.hidden {
       display: none;
+    }
+
+    /* Animation de pulsation pour le loader */
+    @keyframes pulse {
+
+      0%,
+      100% {
+        opacity: 1;
+      }
+
+      50% {
+        opacity: 0.5;
+      }
+    }
+
+    .app-loader svg {
+      animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+
+    /* Amélioration pour le mode sombre/clair */
+    @media (prefers-color-scheme: light) {
+      body {
+        background-color: #f8f9fa;
+        color: #212529;
+      }
+
+      .app-loader {
+        background: #f8f9fa;
+      }
     }
 
     /* Safe area pour iPhone X+ */
