@@ -102,9 +102,17 @@ export const db = {
 
             let query = supabase
                 .from('articles')
-                .select('*')
-                .order('published_at', { ascending: false }); // Tri par date de publication, plus récent en premier
+                .select('*');
 
+            // 🔥 AJOUT IMPORTANT : Filtrer par les 24 dernières heures
+            const twentyFourHoursAgo = new Date();
+            twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
+            query = query.gte('published_at', twentyFourHoursAgo.toISOString());
+
+            // Tri par date décroissante (plus récent en premier)
+            query = query.order('published_at', { ascending: false });
+
+            // Appliquer les filtres
             if (filters.category && filters.category !== 'all') {
                 query = query.eq('category', filters.category);
             }
@@ -112,9 +120,23 @@ export const db = {
                 query = query.eq('orientation', filters.orientation);
             }
 
-            // Limite par défaut à 1000 articles
-            const limit = filters.limit || 1000;
+            // 🔥 LIMITE RAISONNABLE : 200 au lieu de 1000
+            const limit = filters.limit || 200;
             query = query.limit(limit);
+
+            return await query;
+        },
+
+        // 🔥 NOUVELLE FONCTION : Récupérer seulement les nouveaux articles
+        getNewArticles: async (sinceTimestamp) => {
+            if (!supabase) throw new Error('Supabase non configuré');
+
+            let query = supabase
+                .from('articles')
+                .select('*')
+                .gt('published_at', sinceTimestamp)
+                .order('published_at', { ascending: false })
+                .limit(50); // Max 50 nouveaux articles à la fois
 
             return await query;
         },
@@ -130,6 +152,12 @@ export const db = {
 
         create: async (article) => {
             if (!supabase) throw new Error('Supabase non configuré');
+
+            // S'assurer que published_at est défini
+            if (!article.published_at) {
+                article.published_at = new Date().toISOString();
+            }
+
             return await supabase
                 .from('articles')
                 .insert([article])
@@ -153,6 +181,31 @@ export const db = {
                 .from('articles')
                 .delete()
                 .eq('id', id);
+        },
+
+        // 🔥 NOUVELLE FONCTION : Obtenir les stats
+        getStats: async () => {
+            if (!supabase) throw new Error('Supabase non configuré');
+
+            const twentyFourHoursAgo = new Date();
+            twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
+
+            const { count: totalCount } = await supabase
+                .from('articles')
+                .select('*', { count: 'exact', head: true })
+                .gte('published_at', twentyFourHoursAgo.toISOString());
+
+            const { data: sources } = await supabase
+                .from('articles')
+                .select('source_name')
+                .gte('published_at', twentyFourHoursAgo.toISOString());
+
+            const uniqueSources = new Set(sources?.map(s => s.source_name) || []);
+
+            return {
+                total_articles: totalCount || 0,
+                active_sources: uniqueSources.size
+            };
         }
     },
 

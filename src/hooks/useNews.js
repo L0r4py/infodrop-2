@@ -1,6 +1,6 @@
 // src/hooks/useNews.js
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { db, isSupabaseConfigured } from '../lib/supabase';
 import { mockNews } from '../data/mockNews';
 
@@ -21,6 +21,10 @@ export const useNews = () => {
     const [selectedTags, setSelectedTags] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState(null);
+
+    // 🔥 NOUVEAU : Garder trace du dernier timestamp
+    const lastTimestampRef = useRef(null);
+    const isFirstLoadRef = useRef(true);
 
     // Convertir les articles de Supabase au format de l'app
     const convertArticleFromSupabase = (article) => {
@@ -49,20 +53,25 @@ export const useNews = () => {
             title: article.title,
             source: article.source_name,
             url: article.url,
-            orientation: article.orientation || 'neutre', // PAS DE CONVERSION !
+            orientation: article.orientation || 'neutre',
             category: category,
             tags: article.tags || [],
             timestamp: new Date(article.published_at).getTime(),
             views: article.views || 0,
             clicks: article.clicks || 0,
             summary: article.summary,
-            imageUrl: article.image_url
+            imageUrl: article.image_url,
+            publishedAt: article.published_at // 🔥 Garder la date originale
         };
     };
 
-    // Charger les actualités depuis Supabase
-    const loadNews = useCallback(async () => {
-        setIsLoading(true);
+    // 🔥 FONCTION MODIFIÉE : Charger les actualités intelligemment
+    const loadNews = useCallback(async (forceRefresh = false) => {
+        // Afficher le loader seulement au premier chargement
+        if (isFirstLoadRef.current || forceRefresh) {
+            setIsLoading(true);
+        }
+
         setError(null);
 
         try {
@@ -73,47 +82,92 @@ export const useNews = () => {
                 return;
             }
 
-            // Récupérer les articles depuis Supabase
-            const { data, error: supabaseError } = await db.articles.getAll({
-                limit: 1000 // Récupère jusqu'à 1000 articles
-            });
+            let data;
+            let supabaseError;
 
-            if (supabaseError) throw supabaseError;
+            // 🔥 LOGIQUE INTELLIGENTE : Ne charger que les nouveaux articles
+            if (!isFirstLoadRef.current && lastTimestampRef.current && !forceRefresh) {
+                // Chercher seulement les nouveaux articles
+                console.log('🔍 Recherche de nouveaux articles depuis:', lastTimestampRef.current);
 
-            // Convertir les articles au format de l'app
-            const convertedNews = (data || []).map(convertArticleFromSupabase);
+                const result = await db.articles.getNewArticles(lastTimestampRef.current);
+                data = result.data;
+                supabaseError = result.error;
 
-            // Trier par date (plus récent en premier)
-            convertedNews.sort((a, b) => b.timestamp - a.timestamp);
+                if (!supabaseError && data && data.length > 0) {
+                    console.log(`📰 ${data.length} nouveaux articles trouvés`);
 
-            setNews(convertedNews);
-            console.log(`✅ ${convertedNews.length} articles chargés depuis Supabase`);
+                    // Ajouter les nouveaux articles au début
+                    setNews(prevNews => {
+                        const newArticles = data.map(convertArticleFromSupabase);
+                        const existingIds = new Set(prevNews.map(n => n.id));
+                        const uniqueNewArticles = newArticles.filter(a => !existingIds.has(a.id));
 
-            // DEBUG: Afficher les orientations uniques
-            const uniqueOrientations = [...new Set(convertedNews.map(n => n.orientation))];
-            console.log('📊 Orientations trouvées:', uniqueOrientations);
+                        // Limiter à 200 articles max
+                        const combined = [...uniqueNewArticles, ...prevNews];
+                        return combined.slice(0, 200);
+                    });
+
+                    // Mettre à jour le timestamp
+                    lastTimestampRef.current = data[0].published_at;
+                }
+            } else {
+                // Premier chargement ou refresh forcé
+                console.log('📥 Chargement initial des articles');
+
+                const result = await db.articles.getAll({ limit: 200 });
+                data = result.data;
+                supabaseError = result.error;
+
+                if (supabaseError) throw supabaseError;
+
+                // Convertir et définir les articles
+                const convertedNews = (data || []).map(convertArticleFromSupabase);
+                setNews(convertedNews);
+
+                // Garder le timestamp du plus récent
+                if (data && data.length > 0) {
+                    lastTimestampRef.current = data[0].published_at;
+                }
+
+                console.log(`✅ ${convertedNews.length} articles chargés`);
+
+                // DEBUG: Afficher les orientations uniques
+                const uniqueOrientations = [...new Set(convertedNews.map(n => n.orientation))];
+                console.log('📊 Orientations trouvées:', uniqueOrientations);
+            }
+
+            isFirstLoadRef.current = false;
+
         } catch (err) {
             console.error('❌ Erreur chargement articles:', err);
             setError(err.message);
 
             // Fallback vers les données mock en cas d'erreur
-            console.log('📌 Fallback vers les données mock');
-            setNews(mockNews);
+            if (isFirstLoadRef.current) {
+                console.log('📌 Fallback vers les données mock');
+                setNews(mockNews);
+            }
         } finally {
             setIsLoading(false);
         }
     }, []);
 
-    // Charger les news au montage et toutes les 5 minutes
+    // 🔥 ACTUALISATION TOUTES LES 30 SECONDES
     useEffect(() => {
+        // Chargement initial
         loadNews();
 
-        // Rafraîchir toutes les 5 minutes seulement si on utilise Supabase
+        // Rafraîchir toutes les 30 secondes
         if (USE_SUPABASE && isSupabaseConfigured()) {
-            const interval = setInterval(loadNews, 5 * 60 * 1000);
+            const interval = setInterval(() => {
+                console.log('⏰ Actualisation automatique...');
+                loadNews(false); // Pas de force refresh
+            }, 30000); // 30 secondes
+
             return () => clearInterval(interval);
         }
-    }, [loadNews]);
+    }, []); // Dépendances vides pour ne s'exécuter qu'une fois
 
     // Ajouter une actualité (pour l'admin)
     const addNews = useCallback(async (newArticle) => {
@@ -146,16 +200,17 @@ export const useNews = () => {
 
             if (error) throw error;
 
-            // Recharger les articles
-            await loadNews();
+            // Ajouter directement l'article au début de la liste
+            const convertedArticle = convertArticleFromSupabase(data);
+            setNews(prev => [convertedArticle, ...prev].slice(0, 200));
 
-            return convertArticleFromSupabase(data);
+            return convertedArticle;
         } catch (err) {
             console.error('Erreur ajout article:', err);
             setError(err.message);
             throw err;
         }
-    }, [loadNews]);
+    }, []);
 
     // Mettre à jour une actualité
     const updateNews = useCallback(async (id, updates) => {
@@ -175,7 +230,7 @@ export const useNews = () => {
             if (updates.title) supabaseUpdates.title = updates.title;
             if (updates.source) supabaseUpdates.source_name = updates.source;
             if (updates.orientation) {
-                supabaseUpdates.orientation = updates.orientation; // CORRIGÉ : pas de mapping
+                supabaseUpdates.orientation = updates.orientation;
             }
             if (updates.tags) supabaseUpdates.tags = updates.tags;
             if (updates.summary) supabaseUpdates.summary = updates.summary;
@@ -289,6 +344,33 @@ export const useNews = () => {
         setSelectedTags([]);
     }, []);
 
+    // 🔥 NOUVELLE FONCTION : Forcer le rafraîchissement
+    const forceRefresh = useCallback(() => {
+        console.log('🔄 Rafraîchissement forcé');
+        loadNews(true);
+    }, [loadNews]);
+
+    // 🔥 NOUVELLE FONCTION : Obtenir les stats
+    const getStats = useCallback(async () => {
+        if (!USE_SUPABASE || !isSupabaseConfigured()) {
+            return {
+                total_articles: news.length,
+                active_sources: new Set(news.map(n => n.source)).size
+            };
+        }
+
+        try {
+            const stats = await db.articles.getStats();
+            return stats;
+        } catch (err) {
+            console.error('Erreur stats:', err);
+            return {
+                total_articles: news.length,
+                active_sources: new Set(news.map(n => n.source)).size
+            };
+        }
+    }, [news]);
+
     // Obtenir les statistiques des news
     const getNewsStats = useCallback(() => {
         const stats = {
@@ -340,6 +422,7 @@ export const useNews = () => {
 
         // Actions
         loadNews,
+        forceRefresh,
         addNews,
         updateNews,
         deleteNews,
@@ -348,7 +431,8 @@ export const useNews = () => {
         toggleTag,
         clearTags,
         searchNews,
-        getNewsStats
+        getNewsStats,
+        getStats
     };
 };
 
