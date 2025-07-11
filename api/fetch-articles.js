@@ -17,10 +17,10 @@ export default async function handler(req, res) {
             return res.status(401).json({ error: 'Unauthorized' });
         }
 
-        // Configuration
+        // Configuration avec la clé SERVICE pour éviter les erreurs RLS
         const supabase = createClient(
             process.env.REACT_APP_SUPABASE_URL,
-            process.env.REACT_APP_SUPABASE_ANON_KEY
+            process.env.REACT_APP_SUPABASE_SERVICE_KEY  // ✅ Utilise la clé service
         );
 
         const parser = new Parser({
@@ -104,6 +104,8 @@ export default async function handler(req, res) {
 
                 if (!error) {
                     inserted += batch.length;
+                } else {
+                    console.error(`❌ Erreur insertion batch ${Math.floor(i / 100) + 1}:`, error.message);
                 }
             }
         }
@@ -116,6 +118,10 @@ export default async function handler(req, res) {
             .select();
 
         const deleted = deletedData ? deletedData.length : 0;
+
+        if (deleteError) {
+            console.error('⚠️ Erreur lors du nettoyage:', deleteError.message);
+        }
 
         // 5. STATISTIQUES FINALES
         const duration = ((Date.now() - startTime) / 1000).toFixed(2);

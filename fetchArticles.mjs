@@ -11,7 +11,7 @@ dotenv.config({ path: '.env.local' });
 // Configuration Supabase
 const supabase = createClient(
     process.env.REACT_APP_SUPABASE_URL,
-    process.env.REACT_APP_SUPABASE_ANON_KEY
+    process.env.REACT_APP_SUPABASE_SERVICE_KEY || process.env.REACT_APP_SUPABASE_ANON_KEY
 );
 
 // Configuration du parser RSS
@@ -79,7 +79,6 @@ async function parseFeed(source) {
                 title: item.title || 'Sans titre',
                 url: item.link || item.guid,
                 source_name: source.name,
-                source_id: source.id,
                 orientation: source.orientation,
                 tags: source.tags || [],
                 published_at: pubDate.toISOString(),
@@ -136,66 +135,76 @@ async function fetchAllArticles() {
             }
         }
 
-        console.log(`\n📊 Total: ${allArticles.length} articles récupérés`);
-
-        if (allArticles.length === 0) {
-            console.log('⚠️ Aucun article trouvé');
-            return;
-        }
+        console.log(`\n📊 Total: ${allArticles.length} articles trouvés`);
 
         // Insérer les articles dans Supabase
-        console.log('\n💾 Insertion dans la base de données...');
+        if (allArticles.length > 0) {
+            console.log('\n💾 Insertion dans Supabase...');
 
-        // Insérer par batch de 100
-        let inserted = 0;
-        const insertBatchSize = 100;
+            // Insérer par batch de 100
+            let insertedCount = 0;
+            for (let i = 0; i < allArticles.length; i += 100) {
+                const batch = allArticles.slice(i, i + 100);
 
-        for (let i = 0; i < allArticles.length; i += insertBatchSize) {
-            const batch = allArticles.slice(i, i + insertBatchSize);
+                const { data, error } = await supabase
+                    .from('articles')
+                    .upsert(batch, {
+                        onConflict: 'url',
+                        ignoreDuplicates: true
+                    });
 
-            const { data, error } = await supabase
-                .from('articles')
-                .upsert(batch, {
-                    onConflict: 'url',
-                    ignoreDuplicates: true
-                });
+                if (error) {
+                    console.error(`❌ Erreur d'insertion batch ${Math.floor(i / 100) + 1}:`, error.message);
 
-            if (error) {
-                console.error('❌ Erreur insertion:', error);
-            } else {
-                inserted += batch.length;
-                console.log(`✅ ${inserted}/${allArticles.length} articles insérés`);
+                    // Si c'est une erreur RLS, ajouter une politique
+                    if (error.message.includes('row-level security')) {
+                        console.log('\n⚠️  Erreur RLS détectée. Exécutez cette commande SQL dans Supabase:');
+                        console.log(`CREATE POLICY "Allow insert articles" ON articles FOR INSERT WITH CHECK (true);`);
+                        break;
+                    }
+                } else {
+                    insertedCount += batch.length;
+                    console.log(`✅ Batch ${Math.floor(i / 100) + 1} inséré (${batch.length} articles)`);
+                }
             }
+
+            console.log(`\n✅ ${insertedCount} articles insérés au total`);
         }
 
-        console.log('\n✨ Récupération terminée !');
+        // Statistiques finales
+        const { count } = await supabase
+            .from('articles')
+            .select('*', { count: 'exact', head: true });
 
-        // Afficher les stats par orientation
-        const stats = {};
-        allArticles.forEach(article => {
-            const orientation = article.orientation || 'non-défini';
-            stats[orientation] = (stats[orientation] || 0) + 1;
-        });
+        console.log(`\n📈 Total dans la base: ${count} articles`);
 
-        console.log('\n📊 Répartition par orientation:');
-        Object.entries(stats)
-            .sort((a, b) => b[1] - a[1])
-            .forEach(([orientation, count]) => {
-                console.log(`   ${orientation}: ${count} articles`);
+        // Afficher les derniers articles
+        const { data: recentArticles } = await supabase
+            .from('articles')
+            .select('title, source_name, published_at')
+            .order('published_at', { ascending: false })
+            .limit(5);
+
+        if (recentArticles && recentArticles.length > 0) {
+            console.log('\n📰 Derniers articles:');
+            recentArticles.forEach(article => {
+                const date = new Date(article.published_at);
+                console.log(`  - ${article.title.substring(0, 60)}... (${article.source_name}) - ${date.toLocaleString('fr-FR')}`);
             });
+        }
 
     } catch (error) {
-        console.error('💥 Erreur fatale:', error);
+        console.error('❌ Erreur:', error);
     }
 }
 
-// Lancer la récupération
+// Lancer le fetch
 fetchAllArticles()
     .then(() => {
-        console.log('\n👋 Terminé !');
+        console.log('\n✨ Terminé!');
         process.exit(0);
     })
     .catch(err => {
-        console.error('💥 Erreur:', err);
+        console.error('\n💥 Erreur fatale:', err);
         process.exit(1);
     });
