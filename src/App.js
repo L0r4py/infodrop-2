@@ -5,6 +5,7 @@ import './App.css';
 import './styles/globals.css';
 import './styles/animations.css';
 import { Analytics } from '@vercel/analytics/react';
+import { SpeedInsights } from "@vercel/speed-insights/react"
 
 // Contexts
 import { AuthProvider } from './contexts/AuthContext';
@@ -252,6 +253,7 @@ const App = () => {
         <GameProvider>
           <InfodropApp />
           <Analytics />
+          <SpeedInsights />
         </GameProvider>
       </ThemeProvider>
     </AuthProvider>
