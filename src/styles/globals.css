@@ -1,0 +1,249 @@
+/* src/styles/globals.css */
+
+/* === Import Tailwind === */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* === Variables CSS === */
+:root {
+    /* Couleurs INFODROP */
+    --infodrop-primary: #2c3e50;
+    --infodrop-secondary: #e74c3c;
+    --infodrop-accent: #f39c12;
+    --infodrop-dark: #1a1a2e;
+    --infodrop-light: #eef2f3;
+
+    /* Couleurs des orientations politiques */
+    --color-extreme-left: #dc3545;
+    --color-left: #e74c3c;
+    --color-center-left: #ec7063;
+    --color-center: #6c757d;
+    --color-center-right: #5dade2;
+    --color-right: #3498db;
+    --color-extreme-right: #2980b9;
+
+    /* Animations */
+    --animation-duration: 300ms;
+    --animation-timing: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* === Reset et styles de base === */
+* {
+    box-sizing: border-box;
+}
+
+html {
+    scroll-behavior: smooth;
+}
+
+body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+        'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+        sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden;
+}
+
+code {
+    font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
+}
+
+/* === Scrollbar personnalisée === */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #1a1a2e;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #4a5568;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #718096;
+}
+
+/* Mode sombre */
+.dark ::-webkit-scrollbar-track {
+    background: #0f0f1e;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+    background: #2d3748;
+}
+
+/* === Classes utilitaires personnalisées === */
+
+/* Gradients */
+.gradient-infodrop {
+    background: linear-gradient(135deg, var(--infodrop-primary) 0%, var(--infodrop-secondary) 100%);
+}
+
+.gradient-text {
+    background: linear-gradient(to right, #667eea 0%, #764ba2 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+/* Ombres */
+.shadow-infodrop {
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.shadow-infodrop-lg {
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+/* Effets de verre */
+.glass-effect {
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.dark .glass-effect {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* === Composants spécifiques === */
+
+/* Badge d'orientation */
+.orientation-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: white;
+    transition: transform var(--animation-duration) var(--animation-timing);
+}
+
+.orientation-badge:hover {
+    transform: scale(1.05);
+}
+
+/* Card d'actualité */
+.news-card {
+    transition: all var(--animation-duration) var(--animation-timing);
+    cursor: pointer;
+}
+
+.news-card:hover {
+    transform: translateY(-2px);
+}
+
+.news-card:hover .news-card-xp {
+    opacity: 1;
+}
+
+.news-card-xp {
+    opacity: 0;
+    transition: opacity var(--animation-duration) var(--animation-timing);
+}
+
+/* Boutons spéciaux */
+.btn-infodrop {
+    @apply px-6 py-3 rounded-lg font-semibold transition-all duration-300;
+    @apply hover:shadow-lg hover:scale-105;
+}
+
+.btn-primary {
+    @apply bg-gradient-to-r from-purple-500 to-pink-500 text-white;
+}
+
+.btn-secondary {
+    @apply bg-gradient-to-r from-yellow-500 to-orange-500 text-white;
+}
+
+/* === États de chargement === */
+.skeleton {
+    background: linear-gradient(90deg, #2d3748 25%, #4a5568 50%, #2d3748 75%);
+    background-size: 200% 100%;
+    animation: loading 1.5s infinite;
+}
+
+@keyframes loading {
+    0% {
+        background-position: 200% 0;
+    }
+
+    100% {
+        background-position: -200% 0;
+    }
+}
+
+/* === Responsive utilities === */
+@media (max-width: 640px) {
+    .hide-mobile {
+        display: none;
+    }
+}
+
+@media (min-width: 641px) {
+    .hide-desktop {
+        display: none;
+    }
+}
+
+/* === Fixes pour Safari === */
+@supports (-webkit-touch-callout: none) {
+    .safari-fix {
+        -webkit-transform: translateZ(0);
+        transform: translateZ(0);
+    }
+}
+
+/* === Mode impression === */
+@media print {
+    .no-print {
+        display: none !important;
+    }
+
+    body {
+        background: white;
+        color: black;
+    }
+}
+
+/* === Focus visible pour l'accessibilité === */
+:focus-visible {
+    outline: 2px solid var(--infodrop-accent);
+    outline-offset: 2px;
+}
+
+/* === Classes pour les animations de grade === */
+.grade-badge {
+    position: relative;
+    overflow: hidden;
+}
+
+.grade-badge::after {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: linear-gradient(45deg,
+            transparent 30%,
+            rgba(255, 255, 255, 0.5) 50%,
+            transparent 70%);
+    transform: rotate(45deg);
+    transition: transform 0.6s;
+    transform: translateX(-100%) translateY(-100%);
+}
+
+.grade-badge:hover::after {
+    transform: translateX(100%) translateY(100%);
+}
