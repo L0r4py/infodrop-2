@@ -1,7 +1,7 @@
 {
-    "name": "INFODROP",
+    "name": "INFODROP - Le Club privé de l’actu gamifiée",
     "short_name": "INFODROP", 
-    "description": "Le Club privé de l’actu centralisée ",
+    "description": "Agrégation multi-sources en temps réel.",
     "start_url": "/",
     "display": "standalone",
     "background_color": "#111827",
