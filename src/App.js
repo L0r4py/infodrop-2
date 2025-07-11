@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import './App.css';
 import './styles/globals.css';
 import './styles/animations.css';
+import { Analytics } from '@vercel/analytics/react';
 
 // Contexts
 import { AuthProvider } from './contexts/AuthContext';
@@ -250,6 +251,7 @@ const App = () => {
       <ThemeProvider>
         <GameProvider>
           <InfodropApp />
+          <Analytics />
         </GameProvider>
       </ThemeProvider>
     </AuthProvider>

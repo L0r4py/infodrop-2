@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { X, Plus, Edit, Trash2, UserPlus } from 'lucide-react';
 
-// Panel Admin amélioré
+// Panel Admin
 const AdminPanel = ({ darkMode, news, onClose, onAddNews, onUpdateNews, onDeleteNews }) => {
     const [editingNews, setEditingNews] = useState(null);
     const [newNews, setNewNews] = useState({
@@ -23,13 +23,13 @@ const AdminPanel = ({ darkMode, news, onClose, onAddNews, onUpdateNews, onDelete
     };
 
     const handleAddNews = () => {
-        if (newNews.title) { // Seul le titre est obligatoire
+        if (newNews.title) { 
             onAddNews({
                 ...newNews,
                 id: Date.now(),
                 timestamp: Date.now(),
                 views: 0,
-                tags: newNews.tags.filter(t => t) // Filtrer les tags vides
+                tags: newNews.tags.filter(t => t) 
             });
             setNewNews({ title: '', source: '', category: 'tech', orientation: 'center', tags: [], url: '' });
         }
