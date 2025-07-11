@@ -1,6 +1,6 @@
 // src/data/mockNews.js
 
-// Mock data avec orientations et tags
+// Mock data avec orientations et tags (format cohérent avec Supabase)
 export const mockNews = [
     {
         id: 1,
@@ -18,7 +18,7 @@ export const mockNews = [
         title: "La tech française lève des fonds records",
         source: "Les Échos",
         category: "économie",
-        orientation: "centre-droit",
+        orientation: "centre-droit",  // AVEC tiret comme dans Supabase
         tags: ["Innovation"],
         url: "https://example.com",
         timestamp: Date.now() - 7200000,

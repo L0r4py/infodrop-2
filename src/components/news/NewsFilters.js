@@ -3,15 +3,17 @@
 import React, { useState } from 'react';
 import { FileSearch, ChevronDown, ChevronUp } from 'lucide-react';
 
-// Couleurs des orientations politiques (même que dans DiversityScore)
+// Couleurs des orientations politiques (adaptées au français)
 const POLITICAL_COLORS = {
-    'extreme-left': '#dc3545',
-    'left': '#e74c3c',
-    'center-left': '#ec7063',
-    'center': '#6c757d',
-    'center-right': '#5dade2',
-    'right': '#3498db',
-    'extreme-right': '#2980b9'
+    'extrême-gauche': '#dc3545',
+    'gauche': '#e74c3c',
+    'centre-gauche': '#ec7063',
+    'centre': '#6c757d',
+    'centre-droit': '#5dade2',
+    'droite': '#3498db',
+    'extrême-droite': '#2980b9',
+    'gouvernement': '#9b59b6',
+    'neutre': '#95a5a6'
 };
 
 // Composant de filtres pliable avec orientations politiques
@@ -27,20 +29,22 @@ const NewsFilters = ({
     const [isExpanded, setIsExpanded] = useState(false);
     const [isHovered, setIsHovered] = useState(false);
 
-    // Labels des orientations
+    // Labels des orientations (français)
     const orientationLabels = {
         'all': 'Toutes',
-        'extreme-left': 'Extrême G.',
-        'left': 'Gauche',
-        'center-left': 'Centre G.',
-        'center': 'Centre',
-        'center-right': 'Centre D.',
-        'right': 'Droite',
-        'extreme-right': 'Extrême D.'
+        'extrême-gauche': 'Extrême G.',
+        'gauche': 'Gauche',
+        'centre-gauche': 'Centre G.',
+        'centre': 'Centre',
+        'centre-droit': 'Centre D.',
+        'droite': 'Droite',
+        'extrême-droite': 'Extrême D.',
+        'gouvernement': 'Gouvernement',
+        'neutre': 'Neutre'
     };
 
-    // Ordre d'affichage des orientations
-    const orientationOrder = ['all', 'extreme-left', 'left', 'center-left', 'center', 'center-right', 'right', 'extreme-right'];
+    // Ordre d'affichage des orientations (avec tirets pour correspondre à la base)
+    const orientationOrder = ['all', 'extrême-gauche', 'gauche', 'centre-gauche', 'centre', 'centre-droit', 'droite', 'extrême-droite'];
 
     return (
         <div
@@ -63,7 +67,7 @@ const NewsFilters = ({
                             <h3 className="font-bold text-lg">Filtres</h3>
                             {!isExpanded && (
                                 <p className="text-xs text-gray-500 dark:text-gray-400">
-                                    {orientationLabels[selectedCategory]}
+                                    {orientationLabels[selectedCategory] || selectedCategory}
                                     {selectedTags.length > 0 && ` • ${selectedTags.length} tag${selectedTags.length > 1 ? 's' : ''}`}
                                 </p>
                             )}
@@ -75,9 +79,9 @@ const NewsFilters = ({
                         {!isExpanded && selectedCategory !== 'all' && (
                             <span
                                 className="px-3 py-1 text-sm font-medium rounded-lg text-white"
-                                style={{ backgroundColor: POLITICAL_COLORS[selectedCategory] }}
+                                style={{ backgroundColor: POLITICAL_COLORS[selectedCategory] || '#6c757d' }}
                             >
-                                {orientationLabels[selectedCategory]}
+                                {orientationLabels[selectedCategory] || selectedCategory}
                             </span>
                         )}
                         {!isExpanded && selectedTags.length > 0 && (
@@ -116,13 +120,13 @@ const NewsFilters = ({
                                         key={orientation}
                                         onClick={() => setSelectedCategory(orientation)}
                                         className={`px-4 py-2 rounded-lg font-semibold transition-all ${selectedCategory === orientation
-                                                ? 'text-white shadow-md transform scale-105'
-                                                : darkMode
-                                                    ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                            ? 'text-white shadow-md transform scale-105'
+                                            : darkMode
+                                                ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                                             }`}
                                         style={selectedCategory === orientation ? {
-                                            backgroundColor: orientation === 'all' ? '#3b82f6' : POLITICAL_COLORS[orientation]
+                                            backgroundColor: orientation === 'all' ? '#3b82f6' : (POLITICAL_COLORS[orientation] || '#6c757d')
                                         } : {}}
                                     >
                                         {orientationLabels[orientation]}
@@ -151,10 +155,10 @@ const NewsFilters = ({
                                             key={tag}
                                             onClick={() => toggleTag(tag)}
                                             className={`px-3 py-1 text-sm rounded-full transition-all ${selectedTags.includes(tag)
-                                                    ? 'bg-blue-600 text-white shadow-md transform scale-105'
-                                                    : darkMode
-                                                        ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                                                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                                ? 'bg-blue-600 text-white shadow-md transform scale-105'
+                                                : darkMode
+                                                    ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                                                 }`}
                                         >
                                             #{tag}

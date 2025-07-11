@@ -27,6 +27,27 @@ export const isSupabaseConfigured = () => {
     return !!supabase;
 };
 
+// Test de connexion
+export const testConnection = async () => {
+    try {
+        const { data, error } = await supabase
+            .from('sources')
+            .select('count', { count: 'exact' })
+            .limit(1);
+
+        if (error) {
+            console.error('Erreur de connexion Supabase:', error);
+            return false;
+        }
+
+        console.log('✅ Connexion Supabase réussie !');
+        return true;
+    } catch (err) {
+        console.error('Erreur:', err);
+        return false;
+    }
+};
+
 // Helpers pour l'authentification
 export const auth = {
     // Obtenir la session actuelle
@@ -82,7 +103,7 @@ export const db = {
             let query = supabase
                 .from('articles')
                 .select('*')
-                .order('created_at', { ascending: false });
+                .order('published_at', { ascending: false }); // Tri par date de publication, plus récent en premier
 
             if (filters.category && filters.category !== 'all') {
                 query = query.eq('category', filters.category);
@@ -90,9 +111,10 @@ export const db = {
             if (filters.orientation) {
                 query = query.eq('orientation', filters.orientation);
             }
-            if (filters.limit) {
-                query = query.limit(filters.limit);
-            }
+
+            // Limite par défaut à 1000 articles
+            const limit = filters.limit || 1000;
+            query = query.limit(limit);
 
             return await query;
         },
@@ -131,6 +153,56 @@ export const db = {
                 .from('articles')
                 .delete()
                 .eq('id', id);
+        }
+    },
+
+    // Sources RSS
+    sources: {
+        getAll: async (filters = {}) => {
+            if (!supabase) throw new Error('Supabase non configuré');
+
+            let query = supabase
+                .from('sources')
+                .select('*')
+                .order('name');
+
+            if (filters.orientation) {
+                query = query.eq('orientation', filters.orientation);
+            }
+            if (filters.active !== undefined) {
+                query = query.eq('active', filters.active);
+            }
+
+            return await query;
+        },
+
+        getById: async (id) => {
+            if (!supabase) throw new Error('Supabase non configuré');
+            return await supabase
+                .from('sources')
+                .select('*')
+                .eq('id', id)
+                .single();
+        },
+
+        getByOrientation: async (orientation) => {
+            if (!supabase) throw new Error('Supabase non configuré');
+            return await supabase
+                .from('sources')
+                .select('*')
+                .eq('orientation', orientation)
+                .eq('active', true)
+                .order('name');
+        },
+
+        update: async (id, updates) => {
+            if (!supabase) throw new Error('Supabase non configuré');
+            return await supabase
+                .from('sources')
+                .update(updates)
+                .eq('id', id)
+                .select()
+                .single();
         }
     },
 
