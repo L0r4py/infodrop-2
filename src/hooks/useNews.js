@@ -86,9 +86,9 @@ export const useNews = () => {
     const filteredNews = useMemo(() => {
         let filtered = news;
 
-        // Filtrer par catégorie
+        // Filtrer par orientation politique
         if (selectedCategory !== 'all') {
-            filtered = filtered.filter(item => item.category === selectedCategory);
+            filtered = filtered.filter(item => item.orientation === selectedCategory);
         }
 
         // Filtrer par tags
