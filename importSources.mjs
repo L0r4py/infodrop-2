@@ -155,15 +155,18 @@ async function importSources() {
     // Importer chaque source
     for (const feed of RSS_FEEDS) {
         try {
+            // Méthode 1: Utiliser upsert avec onConflict sur 'name' (qui a une contrainte UNIQUE)
             const { data, error } = await supabase
                 .from('sources')
                 .upsert({
                     name: feed.name,
                     url: feed.url,
                     orientation: feed.orientation,
-                    tags: feed.tags || []
+                    tags: feed.tags || [],
+                    active: true,
+                    updated_at: new Date().toISOString()
                 }, {
-                    onConflict: 'url'
+                    onConflict: 'name'  // ✅ Utiliser 'name' au lieu de 'url'
                 });
 
             if (error) {
