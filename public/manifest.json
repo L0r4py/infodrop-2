@@ -1,25 +1,92 @@
 {
-  "short_name": "React App",
-  "name": "Create React App Sample",
+  "short_name": "INFODROP",
+  "name": "INFODROP - Le Club privé de l'actu gamifiée",
+  "description": "Agrégation multi-sources en temps réel. Sortez de votre bulle de filtre.",
   "icons": [
     {
-      "src": "favicon.ico",
-      "sizes": "64x64 32x32 24x24 16x16",
-      "type": "image/x-icon"
+      "src": "/images/infodrop-favicon.png",
+      "sizes": "32x32",
+      "type": "image/png",
+      "purpose": "any"
     },
     {
-      "src": "logo192.png",
+      "src": "/images/apple-touch-icon-120x120.png",
+      "sizes": "120x120",
       "type": "image/png",
-      "sizes": "192x192"
+      "purpose": "any maskable"
     },
     {
-      "src": "logo512.png",
+      "src": "/images/apple-touch-icon-152x152.png",
+      "sizes": "152x152",
       "type": "image/png",
-      "sizes": "512x512"
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/images/apple-touch-icon-167x167.png",
+      "sizes": "167x167",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/images/apple-touch-icon-180x180.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/images/android-chrome-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/images/android-chrome-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
     }
   ],
   "start_url": ".",
   "display": "standalone",
-  "theme_color": "#000000",
-  "background_color": "#ffffff"
+  "theme_color": "#2c3e50",
+  "background_color": "#1a1a2e",
+  "orientation": "portrait-primary",
+  "categories": [
+    "news",
+    "education",
+    "lifestyle"
+  ],
+  "lang": "fr-FR",
+  "dir": "ltr",
+  "scope": "/",
+  "prefer_related_applications": false,
+  "related_applications": [],
+  "shortcuts": [
+    {
+      "name": "Nouveaux articles",
+      "short_name": "Articles",
+      "description": "Voir les derniers articles",
+      "url": "/?section=news",
+      "icons": [
+        {
+          "src": "/images/apple-touch-icon-120x120.png",
+          "sizes": "120x120",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Mon profil",
+      "short_name": "Profil",
+      "description": "Voir mes stats et badges",
+      "url": "/?section=profile",
+      "icons": [
+        {
+          "src": "apple-touch-icon-120x120.png",
+          "sizes": "120x120",
+          "type": "image/png"
+        }
+      ]
+    }
+  ]
 }
