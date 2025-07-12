@@ -1,11 +1,10 @@
 // src/hooks/useNews.js
-// Version FINALE COMPLÈTE avec toutes les fonctions CRUD
+// Version FINALE "PARE-BALLES" - Nettoie et sécurise toutes les données avec toutes les fonctions CRUD
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { db, isSupabaseConfigured } from '../lib/supabase';
 import { mockNews } from '../data/mockNews';
 
-// Variable pour activer/désactiver Supabase
 const USE_SUPABASE = true;
 
 export const useNews = () => {
@@ -15,13 +14,12 @@ export const useNews = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState(null);
 
-    // Charger les actualités depuis Supabase
+    // Charger les actualités depuis Supabase avec conversion PARE-BALLES
     const loadNews = useCallback(async () => {
         setIsLoading(true);
         setError(null);
 
         try {
-            // Vérifier si on doit utiliser Supabase
             if (!USE_SUPABASE || !isSupabaseConfigured()) {
                 console.log('📌 Utilisation des données mock');
                 setNews(mockNews);
@@ -31,33 +29,58 @@ export const useNews = () => {
 
             console.log('📥 Chargement des articles depuis Supabase...');
 
-            // Requête simple et directe à Supabase
             const { data, error: supabaseError } = await db
                 .from('articles')
                 .select('*')
                 .order('pubDate', { ascending: false })
                 .limit(300);
 
-            if (supabaseError) {
-                throw supabaseError;
-            }
+            if (supabaseError) throw supabaseError;
 
-            // Convertir les articles au format attendu par l'app
-            const convertedNews = (data || []).map(article => ({
-                id: article.id,
-                title: article.title || '',
-                source: article.source_name || '',
-                url: article.link || '',
-                orientation: article.orientation || 'neutre',
-                category: article.category || 'généraliste',
-                tags: Array.isArray(article.tags) ? article.tags : [],
-                timestamp: article.pubDate ? new Date(article.pubDate).getTime() : Date.now(),
-                views: article.views || 0,
-                clicks: article.clicks || 0,
-                imageUrl: article.image_url || null,
-                publishedAt: article.pubDate,
-                guid: article.guid
-            }));
+            // ✅ CONVERSION PARE-BALLES : Sécurisation de toutes les données
+            const convertedNews = (data || []).map(article => {
+                // S'assurer que chaque valeur est du bon type, avec un fallback solide
+                const safeTitle = String(article.title || 'Sans titre');
+                const safeSource = String(article.source_name || 'Source inconnue');
+                const safeLink = String(article.link || '#');
+                const safeOrientation = String(article.orientation || 'neutre');
+                const safeCategory = String(article.category || 'généraliste');
+
+                // Gestion sécurisée des tags
+                let safeTags = [];
+                if (Array.isArray(article.tags)) {
+                    safeTags = article.tags.filter(tag => typeof tag === 'string');
+                }
+
+                // Gestion sécurisée de la date
+                let safeTimestamp = Date.now();
+                try {
+                    if (article.pubDate) {
+                        const parsedDate = new Date(article.pubDate);
+                        if (!isNaN(parsedDate.getTime())) {
+                            safeTimestamp = parsedDate.getTime();
+                        }
+                    }
+                } catch (e) {
+                    console.warn('Date invalide pour article:', article.id);
+                }
+
+                return {
+                    id: article.id,
+                    title: safeTitle,
+                    source: safeSource,
+                    url: safeLink,
+                    orientation: safeOrientation,
+                    category: safeCategory,
+                    tags: safeTags,
+                    timestamp: safeTimestamp,
+                    views: Number(article.views) || 0,
+                    clicks: Number(article.clicks) || 0,
+                    imageUrl: article.image_url || null,
+                    publishedAt: article.pubDate,
+                    guid: article.guid || null
+                };
+            });
 
             // Filtrer les articles des dernières 24h
             const twentyFourHoursAgo = Date.now() - (24 * 60 * 60 * 1000);
@@ -69,8 +92,6 @@ export const useNews = () => {
         } catch (err) {
             console.error('❌ Erreur chargement articles:', err);
             setError(err.message);
-
-            // Fallback vers les données mock en cas d'erreur
             console.log('📌 Fallback vers les données mock');
             setNews(mockNews);
         } finally {
@@ -101,12 +122,12 @@ export const useNews = () => {
             // Mode mock : ajouter localement
             const mockArticle = {
                 id: Date.now(),
-                title: newArticle.title,
-                source: newArticle.source || 'Admin',
-                url: newArticle.url || `#article-${Date.now()}`,
-                orientation: newArticle.orientation || 'neutre',
-                category: newArticle.category || 'généraliste',
-                tags: newArticle.tags || [],
+                title: String(newArticle.title || 'Sans titre'),
+                source: String(newArticle.source || 'Admin'),
+                url: String(newArticle.url || `#article-${Date.now()}`),
+                orientation: String(newArticle.orientation || 'neutre'),
+                category: String(newArticle.category || 'généraliste'),
+                tags: Array.isArray(newArticle.tags) ? newArticle.tags : [],
                 timestamp: Date.now(),
                 views: 0,
                 clicks: 0,
@@ -121,12 +142,12 @@ export const useNews = () => {
             console.log('➕ Ajout d\'un nouvel article...');
 
             const articleToInsert = {
-                title: newArticle.title,
-                link: newArticle.url || `https://admin.local/article-${Date.now()}`,
-                source_name: newArticle.source || 'Admin',
-                orientation: newArticle.orientation || 'neutre',
-                category: newArticle.category || 'généraliste',
-                tags: newArticle.tags || [],
+                title: String(newArticle.title || 'Sans titre'),
+                link: String(newArticle.url || `https://admin.local/article-${Date.now()}`),
+                source_name: String(newArticle.source || 'Admin'),
+                orientation: String(newArticle.orientation || 'neutre'),
+                category: String(newArticle.category || 'généraliste'),
+                tags: Array.isArray(newArticle.tags) ? newArticle.tags.filter(t => typeof t === 'string') : [],
                 pubDate: new Date().toISOString(),
                 image_url: newArticle.imageUrl || null,
                 guid: `admin-${Date.now()}`,
@@ -142,19 +163,19 @@ export const useNews = () => {
 
             if (error) throw error;
 
-            // Ajouter l'article converti à la liste locale
+            // Ajouter l'article converti à la liste locale avec conversion PARE-BALLES
             const convertedArticle = {
                 id: data.id,
-                title: data.title,
-                source: data.source_name,
-                url: data.link,
-                orientation: data.orientation,
-                category: data.category,
-                tags: data.tags || [],
+                title: String(data.title || 'Sans titre'),
+                source: String(data.source_name || 'Admin'),
+                url: String(data.link || '#'),
+                orientation: String(data.orientation || 'neutre'),
+                category: String(data.category || 'généraliste'),
+                tags: Array.isArray(data.tags) ? data.tags : [],
                 timestamp: new Date(data.pubDate).getTime(),
-                views: data.views || 0,
-                clicks: data.clicks || 0,
-                imageUrl: data.image_url,
+                views: Number(data.views) || 0,
+                clicks: Number(data.clicks) || 0,
+                imageUrl: data.image_url || null,
                 publishedAt: data.pubDate
             };
 
@@ -185,12 +206,12 @@ export const useNews = () => {
             console.log('📝 Mise à jour de l\'article', id);
 
             const updateData = {};
-            if (updates.title) updateData.title = updates.title;
-            if (updates.source) updateData.source_name = updates.source;
-            if (updates.url) updateData.link = updates.url;
-            if (updates.orientation) updateData.orientation = updates.orientation;
-            if (updates.category) updateData.category = updates.category;
-            if (updates.tags) updateData.tags = updates.tags;
+            if (updates.title !== undefined) updateData.title = String(updates.title);
+            if (updates.source !== undefined) updateData.source_name = String(updates.source);
+            if (updates.url !== undefined) updateData.link = String(updates.url);
+            if (updates.orientation !== undefined) updateData.orientation = String(updates.orientation);
+            if (updates.category !== undefined) updateData.category = String(updates.category);
+            if (updates.tags !== undefined) updateData.tags = Array.isArray(updates.tags) ? updates.tags.filter(t => typeof t === 'string') : [];
             if (updates.imageUrl !== undefined) updateData.image_url = updates.imageUrl;
 
             const { error } = await db
@@ -200,10 +221,22 @@ export const useNews = () => {
 
             if (error) throw error;
 
-            // Mettre à jour localement
-            setNews(prev => prev.map(item =>
-                item.id === id ? { ...item, ...updates } : item
-            ));
+            // Mettre à jour localement avec sécurisation des données
+            setNews(prev => prev.map(item => {
+                if (item.id === id) {
+                    return {
+                        ...item,
+                        title: updates.title !== undefined ? String(updates.title) : item.title,
+                        source: updates.source !== undefined ? String(updates.source) : item.source,
+                        url: updates.url !== undefined ? String(updates.url) : item.url,
+                        orientation: updates.orientation !== undefined ? String(updates.orientation) : item.orientation,
+                        category: updates.category !== undefined ? String(updates.category) : item.category,
+                        tags: updates.tags !== undefined ? (Array.isArray(updates.tags) ? updates.tags : []) : item.tags,
+                        imageUrl: updates.imageUrl !== undefined ? updates.imageUrl : item.imageUrl
+                    };
+                }
+                return item;
+            }));
 
             console.log('✅ Article mis à jour');
             return { success: true };
@@ -254,7 +287,7 @@ export const useNews = () => {
         setNews(prev =>
             prev.map(item =>
                 item.id === id
-                    ? { ...item, views: (item.views || 0) + 1 }
+                    ? { ...item, views: (Number(item.views) || 0) + 1 }
                     : item
             )
         );
@@ -262,7 +295,7 @@ export const useNews = () => {
         // Mise à jour en base si Supabase est actif
         if (USE_SUPABASE && isSupabaseConfigured()) {
             try {
-                // Incrémenter directement dans la base
+                // Essayer d'abord la fonction RPC
                 const { error } = await db.rpc('increment_views', { article_id: id });
 
                 // Si la fonction RPC n'existe pas, faire un update classique
@@ -271,7 +304,7 @@ export const useNews = () => {
                     if (article) {
                         await db
                             .from('articles')
-                            .update({ views: (article.views || 0) + 1 })
+                            .update({ views: (Number(article.views) || 0) + 1 })
                             .eq('id', id);
                     }
                 }
@@ -290,7 +323,7 @@ export const useNews = () => {
         setNews(prev =>
             prev.map(item =>
                 item.id === id
-                    ? { ...item, clicks: (item.clicks || 0) + 1 }
+                    ? { ...item, clicks: (Number(item.clicks) || 0) + 1 }
                     : item
             )
         );
@@ -301,7 +334,7 @@ export const useNews = () => {
                 if (article) {
                     await db
                         .from('articles')
-                        .update({ clicks: (article.clicks || 0) + 1 })
+                        .update({ clicks: (Number(article.clicks) || 0) + 1 })
                         .eq('id', id);
                 }
             } catch (err) {
@@ -316,7 +349,7 @@ export const useNews = () => {
 
         // Filtrer par orientation
         if (selectedCategory !== 'all') {
-            filtered = filtered.filter(item => item.orientation === selectedCategory);
+            filtered = filtered.filter(item => String(item.orientation) === selectedCategory);
         }
 
         // Filtrer par tags
@@ -333,7 +366,7 @@ export const useNews = () => {
         return filtered;
     }, [news, selectedCategory, selectedTags]);
 
-    // Obtenir tous les tags uniques
+    // Obtenir tous les tags uniques avec sécurisation
     const allTags = useMemo(() => {
         const tags = new Set();
         news.forEach(item => {
@@ -348,7 +381,7 @@ export const useNews = () => {
         return Array.from(tags).sort();
     }, [news]);
 
-    // Actions simples
+    // Actions simples avec validation
     const toggleTag = useCallback((tag) => {
         if (!tag || typeof tag !== 'string') return;
 
@@ -368,22 +401,25 @@ export const useNews = () => {
         loadNews();
     }, [loadNews]);
 
-    // ✅ FONCTION : Recherche dans les articles
+    // ✅ FONCTION : Recherche dans les articles avec sécurisation
     const searchNews = useCallback((query) => {
         if (!query || typeof query !== 'string') return news;
 
         const lowerQuery = query.toLowerCase().trim();
 
-        return news.filter(item =>
-            item.title.toLowerCase().includes(lowerQuery) ||
-            item.source.toLowerCase().includes(lowerQuery) ||
-            (item.tags && item.tags.some(tag =>
-                tag.toLowerCase().includes(lowerQuery)
-            ))
-        );
+        return news.filter(item => {
+            const safeTitle = String(item.title || '').toLowerCase();
+            const safeSource = String(item.source || '').toLowerCase();
+            const hasTitleMatch = safeTitle.includes(lowerQuery);
+            const hasSourceMatch = safeSource.includes(lowerQuery);
+            const hasTagMatch = item.tags && Array.isArray(item.tags) &&
+                item.tags.some(tag => String(tag || '').toLowerCase().includes(lowerQuery));
+
+            return hasTitleMatch || hasSourceMatch || hasTagMatch;
+        });
     }, [news]);
 
-    // Statistiques détaillées
+    // Statistiques détaillées avec sécurisation
     const getNewsStats = useCallback(() => {
         const stats = {
             total: news.length,
@@ -395,7 +431,7 @@ export const useNews = () => {
             mostClicked: null
         };
 
-        // Compter par orientation et catégorie
+        // Compter par orientation, catégorie et source avec sécurisation
         news.forEach(item => {
             // Par orientation
             const orientation = String(item.orientation || 'neutre');
@@ -412,8 +448,8 @@ export const useNews = () => {
 
         // Articles les plus vus/cliqués
         if (news.length > 0) {
-            stats.mostViewed = [...news].sort((a, b) => (b.views || 0) - (a.views || 0))[0];
-            stats.mostClicked = [...news].sort((a, b) => (b.clicks || 0) - (a.clicks || 0))[0];
+            stats.mostViewed = [...news].sort((a, b) => (Number(b.views) || 0) - (Number(a.views) || 0))[0];
+            stats.mostClicked = [...news].sort((a, b) => (Number(b.clicks) || 0) - (Number(a.clicks) || 0))[0];
         }
 
         return stats;
@@ -441,7 +477,7 @@ export const useNews = () => {
                 .select('source_name')
                 .gte('pubDate', twentyFourHoursAgo);
 
-            const uniqueSources = new Set(recentArticles?.map(item => item.source_name) || []);
+            const uniqueSources = new Set(recentArticles?.map(item => String(item.source_name || '')) || []);
 
             return {
                 total_articles: totalCount || 0,
@@ -456,7 +492,7 @@ export const useNews = () => {
         }
     }, [news]);
 
-    // Helper pour formater les dates
+    // Helper pour formater les dates avec sécurisation
     const formatDate = useCallback((dateString) => {
         if (!dateString) return '';
 
@@ -486,6 +522,7 @@ export const useNews = () => {
                 minute: '2-digit'
             });
         } catch (err) {
+            console.error('Erreur formatage date:', err);
             return '';
         }
     }, []);
