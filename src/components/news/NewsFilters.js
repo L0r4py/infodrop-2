@@ -1,7 +1,7 @@
 // src/components/news/NewsFilters.js
 
 import React, { useState } from 'react';
-import { FileSearch, ChevronDown, ChevronUp } from 'lucide-react';
+import { FileSearch, ChevronDown, ChevronUp, Search, X } from 'lucide-react';
 
 // Couleurs des orientations politiques (adaptées au français)
 const POLITICAL_COLORS = {
@@ -16,7 +16,7 @@ const POLITICAL_COLORS = {
     'neutre': '#95a5a6'
 };
 
-// Composant de filtres pliable avec orientations politiques
+// Composant de filtres pliable avec orientations politiques et barre de recherche
 const NewsFilters = ({
     darkMode,
     selectedCategory,
@@ -24,7 +24,9 @@ const NewsFilters = ({
     selectedTags,
     toggleTag,
     allTags,
-    clearTags
+    clearTags,
+    searchTerm,      // NOUVEAU
+    setSearchTerm    // NOUVEAU
 }) => {
     const [isExpanded, setIsExpanded] = useState(false);
     const [isHovered, setIsHovered] = useState(false);
@@ -55,8 +57,45 @@ const NewsFilters = ({
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
         >
-            {/* Header toujours visible */}
+            {/* Header toujours visible avec barre de recherche */}
             <div className="p-4">
+                {/* Barre de recherche - NOUVEL ÉLÉMENT */}
+                <div className="mb-4">
+                    <div className="relative">
+                        <Search className={`
+                            absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5
+                            ${darkMode ? 'text-gray-400' : 'text-gray-500'}
+                        `} />
+                        <input
+                            type="text"
+                            placeholder="Rechercher un article..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className={`
+                                w-full pl-10 pr-10 py-2 rounded-lg border transition-all duration-200
+                                ${darkMode
+                                    ? 'bg-slate-700 border-slate-600 text-white placeholder-gray-400 focus:border-blue-500'
+                                    : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500 focus:border-blue-500'
+                                }
+                                focus:outline-none focus:ring-2 focus:ring-blue-500/20
+                            `}
+                        />
+                        {searchTerm && (
+                            <button
+                                onClick={() => setSearchTerm('')}
+                                className={`
+                                    absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-full
+                                    transition-all duration-200
+                                    ${darkMode ? 'hover:bg-slate-600' : 'hover:bg-gray-200'}
+                                `}
+                            >
+                                <X className="w-4 h-4 text-gray-500" />
+                            </button>
+                        )}
+                    </div>
+                </div>
+
+                {/* Header avec icône et bouton d'expansion */}
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                         <div className={`p-2 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg transition-all duration-300 ${isHovered ? 'scale-110 rotate-3' : ''
@@ -69,6 +108,7 @@ const NewsFilters = ({
                                 <p className="text-xs text-gray-500 dark:text-gray-400">
                                     {orientationLabels[selectedCategory] || selectedCategory}
                                     {selectedTags.length > 0 && ` • ${selectedTags.length} tag${selectedTags.length > 1 ? 's' : ''}`}
+                                    {searchTerm && ` • Recherche: "${searchTerm}"`}
                                 </p>
                             )}
                         </div>
@@ -120,10 +160,10 @@ const NewsFilters = ({
                                         key={orientation}
                                         onClick={() => setSelectedCategory(orientation)}
                                         className={`px-4 py-2 rounded-lg font-semibold transition-all ${selectedCategory === orientation
-                                            ? 'text-white shadow-md transform scale-105'
-                                            : darkMode
-                                                ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                                ? 'text-white shadow-md transform scale-105'
+                                                : darkMode
+                                                    ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                                             }`}
                                         style={selectedCategory === orientation ? {
                                             backgroundColor: orientation === 'all' ? '#3b82f6' : (POLITICAL_COLORS[orientation] || '#6c757d')
@@ -155,10 +195,10 @@ const NewsFilters = ({
                                             key={tag}
                                             onClick={() => toggleTag(tag)}
                                             className={`px-3 py-1 text-sm rounded-full transition-all ${selectedTags.includes(tag)
-                                                ? 'bg-blue-600 text-white shadow-md transform scale-105'
-                                                : darkMode
-                                                    ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                                    ? 'bg-blue-600 text-white shadow-md transform scale-105'
+                                                    : darkMode
+                                                        ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                                                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                                                 }`}
                                         >
                                             #{tag}

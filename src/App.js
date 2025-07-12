@@ -1,4 +1,4 @@
-// src/App.js - VERSION FINALE SIMPLIFIÉE
+// src/App.js - VERSION FINALE AVEC RECHERCHE
 
 import React, { useState, useEffect, useCallback } from 'react';
 import './App.css';
@@ -97,6 +97,8 @@ const InfodropApp = () => {
     isLoading,
     error,
     globalStats, // ✅ ON RÉCUPÈRE LES STATS DIRECTEMENT
+    searchTerm,     // ✅ NOUVEAU
+    setSearchTerm,  // ✅ NOUVEAU
     forceRefresh,
     addNews,
     updateNews,
@@ -267,6 +269,8 @@ const InfodropApp = () => {
           toggleTag={toggleTag}
           allTags={allTags}
           clearTags={clearTags}
+          searchTerm={searchTerm}        // ✅ Nouvelle prop
+          setSearchTerm={setSearchTerm}  // ✅ Nouvelle prop
           articleCount={filteredNews.length}
         />
 

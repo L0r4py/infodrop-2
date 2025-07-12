@@ -1,5 +1,5 @@
 // src/hooks/useNews.js
-// VERSION FINALE - IMPORTS CORRECTS
+// VERSION FINALE - AVEC RECHERCHE
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
@@ -13,6 +13,7 @@ export const useNews = () => {
     const [news, setNews] = useState([]);
     const [selectedCategory, setSelectedCategory] = useState('all');
     const [selectedTags, setSelectedTags] = useState([]);
+    const [searchTerm, setSearchTerm] = useState(''); // ✅ NOUVEL ÉTAT
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState(null);
 
@@ -417,18 +418,32 @@ export const useNews = () => {
         }
     }, [news]);
 
-    // Filtrer les news
+    // ✅ LOGIQUE DE FILTRAGE MISE À JOUR
     const filteredNews = useMemo(() => {
         if (!Array.isArray(news)) return [];
 
         let filtered = [...news];
 
+        // 1. Filtrage par recherche textuelle (appliqué en premier)
+        if (searchTerm && searchTerm.trim() !== '') {
+            const lowercasedTerm = searchTerm.toLowerCase().trim();
+            filtered = filtered.filter(item => {
+                if (!item) return false;
+                // On cherche dans le titre ET la source
+                const titleMatch = (item.title?.toLowerCase() || '').includes(lowercasedTerm);
+                const sourceMatch = (item.source?.toLowerCase() || '').includes(lowercasedTerm);
+                return titleMatch || sourceMatch;
+            });
+        }
+
+        // 2. Filtrage par orientation
         if (selectedCategory !== 'all') {
             filtered = filtered.filter(item =>
                 item && String(item.orientation) === selectedCategory
             );
         }
 
+        // 3. Filtrage par tags
         if (selectedTags.length > 0) {
             filtered = filtered.filter(item =>
                 item && item.tags && Array.isArray(item.tags) &&
@@ -436,10 +451,11 @@ export const useNews = () => {
             );
         }
 
+        // Tri par date
         filtered.sort((a, b) => (b?.timestamp || 0) - (a?.timestamp || 0));
 
         return filtered;
-    }, [news, selectedCategory, selectedTags]);
+    }, [news, selectedCategory, selectedTags, searchTerm]); // ✅ searchTerm ajouté aux dépendances
 
     // Obtenir tous les tags uniques
     const allTags = useMemo(() => {
@@ -576,6 +592,7 @@ export const useNews = () => {
         }
     }, []);
 
+    // ✅ RETOUR FINAL AVEC searchTerm ET setSearchTerm
     return {
         // État
         news,
@@ -586,6 +603,8 @@ export const useNews = () => {
         isLoading,
         error,
         globalStats,
+        searchTerm,      // ✅ Nouveau
+        setSearchTerm,   // ✅ Nouveau
 
         // Actions CRUD
         addNews,
