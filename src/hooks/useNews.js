@@ -1,5 +1,5 @@
 // src/hooks/useNews.js
-// Version FINALE - Protection contre les race conditions
+// Version FINALE - Protection contre les race conditions - SANS getStats
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { db, isSupabaseConfigured } from '../lib/supabase';
@@ -466,7 +466,7 @@ export const useNews = () => {
         });
     }, [news]);
 
-    // Statistiques avec protection
+    // ✅ STATISTIQUES LOCALES basées sur l'état news (PAS de requêtes DB)
     const getNewsStats = useCallback(() => {
         const stats = {
             total: 0,
@@ -508,40 +508,7 @@ export const useNews = () => {
         return stats;
     }, [news]);
 
-    // Stats globales
-    const getStats = useCallback(async () => {
-        if (!USE_SUPABASE || !isSupabaseConfigured()) {
-            return {
-                total_articles: news.length,
-                active_sources: new Set(news.map(n => n?.source).filter(Boolean)).size
-            };
-        }
-
-        try {
-            const { count: totalCount } = await db
-                .from('articles')
-                .select('*', { count: 'exact', head: true });
-
-            const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-            const { data: recentArticles } = await db
-                .from('articles')
-                .select('source_name')
-                .gte('pubDate', twentyFourHoursAgo);
-
-            const uniqueSources = new Set(recentArticles?.map(item => String(item.source_name || '')) || []);
-
-            return {
-                total_articles: totalCount || 0,
-                active_sources: uniqueSources.size
-            };
-        } catch (err) {
-            console.error('Erreur récupération stats:', err);
-            return {
-                total_articles: news.length,
-                active_sources: new Set(news.map(n => n?.source).filter(Boolean)).size
-            };
-        }
-    }, [news]);
+    // ❌ FONCTION getStats SUPPRIMÉE - Déplacée dans App.js
 
     // Helper pour formater les dates
     const formatDate = useCallback((dateString) => {
@@ -602,9 +569,9 @@ export const useNews = () => {
         forceRefresh,
         loadNews,
 
-        // Statistiques
+        // Statistiques LOCALES
         getNewsStats,
-        getStats,
+        // ❌ getStats RETIRÉ
 
         // Helpers
         formatDate,

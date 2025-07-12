@@ -1,4 +1,4 @@
-// src/App.js - MODIFICATIONS MINIMALES
+// src/App.js - VERSION CORRIGÉE
 
 import React, { useState, useEffect, useCallback } from 'react';
 import './App.css';
@@ -6,6 +6,9 @@ import './styles/globals.css';
 import './styles/animations.css';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from "@vercel/speed-insights/react"
+
+// ✅ IMPORT DIRECT DE LA BASE DE DONNÉES
+import { db } from './lib/supabase';
 
 // Contexts
 import { AuthProvider } from './contexts/AuthContext';
@@ -48,6 +51,39 @@ import { grades } from './data/rewards';
 // Icônes
 import { RefreshCw, Wifi, WifiOff } from 'lucide-react';
 
+// ✅ FONCTION INDÉPENDANTE POUR LES STATS GLOBALES
+const fetchGlobalStats = async () => {
+  try {
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+    // Requêtes en parallèle pour la performance
+    const [articlesRes, sourcesRes] = await Promise.all([
+      db.from('articles').select('id').gte('pubDate', twentyFourHoursAgo),
+      db.from('articles').select('source_name').gte('pubDate', twentyFourHoursAgo)
+    ]);
+
+    if (articlesRes.error) throw articlesRes.error;
+    if (sourcesRes.error) throw sourcesRes.error;
+
+    const total_articles = articlesRes.data?.length || 0;
+    const uniqueSources = new Set(sourcesRes.data?.map(item => item.source_name) || []);
+
+    return {
+      total_articles: total_articles,
+      active_sources: uniqueSources.size,
+      articles_publies_24h: total_articles, // Pour la compatibilité
+    };
+  } catch (error) {
+    console.error("Erreur récupération stats globales:", error);
+    // Retour d'un objet par défaut pour ne pas faire planter l'UI
+    return {
+      total_articles: 0,
+      active_sources: 0,
+      articles_publies_24h: 0
+    };
+  }
+};
+
 // 🆕 FONCTION DE NETTOYAGE DES DONNÉES
 const cleanOrientationCounts = (counts) => {
   if (!counts || typeof counts !== 'object') return {};
@@ -80,6 +116,7 @@ const InfodropApp = () => {
     xpAnimationPoints
   } = useGame();
 
+  // ✅ ON NE RÉCUPÈRE PLUS getStats DE useNews
   const {
     news,
     filteredNews,
@@ -97,7 +134,7 @@ const InfodropApp = () => {
     deleteNews,
     markAsRead,
     formatDate,
-    getStats
+    getNewsStats // On garde getNewsStats pour les stats locales
   } = useNews();
 
   // État des modals
@@ -115,8 +152,12 @@ const InfodropApp = () => {
   // État de connexion
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
-  // Statistiques globales
-  const [globalStats, setGlobalStats] = useState(null);
+  // ✅ ÉTAT DES STATISTIQUES GLOBALES
+  const [globalStats, setGlobalStats] = useState({
+    total_articles: 0,
+    active_sources: 0,
+    articles_publies_24h: 0
+  });
 
   // Vérifier la connexion internet
   useEffect(() => {
@@ -132,23 +173,21 @@ const InfodropApp = () => {
     };
   }, []);
 
-  // Charger les stats globales
+  // ✅ CHARGEMENT DES STATS GLOBALES CORRIGÉ
   useEffect(() => {
     const loadStats = async () => {
-      try {
-        const stats = await getStats();
-        setGlobalStats(stats);
-      } catch (error) {
-        console.error('Erreur chargement stats:', error);
-      }
+      const stats = await fetchGlobalStats();
+      setGlobalStats(stats);
     };
 
+    // Charger au montage
     loadStats();
-    // Rafraîchir les stats toutes les 5 minutes
+
+    // Rafraîchir toutes les 5 minutes
     const interval = setInterval(loadStats, 5 * 60 * 1000);
 
     return () => clearInterval(interval);
-  }, [getStats]);
+  }, []); // ✅ Tableau de dépendances VIDE
 
   // Vérifier les animations en attente au chargement et au focus
   useEffect(() => {
@@ -157,7 +196,6 @@ const InfodropApp = () => {
       if (pendingAnimation) {
         try {
           const animation = JSON.parse(pendingAnimation);
-          // Pas de limite de temps - on joue l'animation peu importe quand
           console.log('Animation XP en attente détectée');
 
           // Déclencher l'animation XP après un petit délai
@@ -252,26 +290,24 @@ const InfodropApp = () => {
         />
 
         {/* Statistiques rapides */}
-        {globalStats && (
-          <div className={`grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-            <div className={`p-4 rounded-lg text-center ${darkMode ? 'bg-slate-800' : 'bg-white shadow-sm'}`}>
-              <div className="text-2xl font-bold text-blue-500">{globalStats.total_articles || 0}</div>
-              <div className="text-sm">Articles aujourd'hui</div>
-            </div>
-            <div className={`p-4 rounded-lg text-center ${darkMode ? 'bg-slate-800' : 'bg-white shadow-sm'}`}>
-              <div className="text-2xl font-bold text-emerald-500">{globalStats.active_sources || 0}</div>
-              <div className="text-sm">Sources actives</div>
-            </div>
-            <div className={`p-4 rounded-lg text-center ${darkMode ? 'bg-slate-800' : 'bg-white shadow-sm'}`}>
-              <div className="text-2xl font-bold text-purple-500">{news.length}</div>
-              <div className="text-sm">Articles affichés</div>
-            </div>
-            <div className={`p-4 rounded-lg text-center ${darkMode ? 'bg-slate-800' : 'bg-white shadow-sm'}`}>
-              <div className="text-2xl font-bold text-orange-500">{userStats.readCount || 0}</div>
-              <div className="text-sm">Articles lus</div>
-            </div>
+        <div className={`grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+          <div className={`p-4 rounded-lg text-center ${darkMode ? 'bg-slate-800' : 'bg-white shadow-sm'}`}>
+            <div className="text-2xl font-bold text-blue-500">{globalStats.total_articles || 0}</div>
+            <div className="text-sm">Articles aujourd'hui</div>
           </div>
-        )}
+          <div className={`p-4 rounded-lg text-center ${darkMode ? 'bg-slate-800' : 'bg-white shadow-sm'}`}>
+            <div className="text-2xl font-bold text-emerald-500">{globalStats.active_sources || 0}</div>
+            <div className="text-sm">Sources actives</div>
+          </div>
+          <div className={`p-4 rounded-lg text-center ${darkMode ? 'bg-slate-800' : 'bg-white shadow-sm'}`}>
+            <div className="text-2xl font-bold text-purple-500">{news.length}</div>
+            <div className="text-sm">Articles affichés</div>
+          </div>
+          <div className={`p-4 rounded-lg text-center ${darkMode ? 'bg-slate-800' : 'bg-white shadow-sm'}`}>
+            <div className="text-2xl font-bold text-orange-500">{userStats.readCount || 0}</div>
+            <div className="text-sm">Articles lus</div>
+          </div>
+        </div>
 
         {/* Filtres */}
         <NewsFilters
