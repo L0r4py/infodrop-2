@@ -1,9 +1,10 @@
 // Fichier : api/cron-fetch-articles.js
-// Version finale, basée sur ton code amélioré.
+// Version Finale Complète : Enrichit les données avec les tags.
 
 import { createClient } from '@supabase/supabase-js';
 import RssParser from 'rss-parser';
-import { newsSources } from '../../src/data/newsSources.js';
+// ✅ CORRECTION DU CHEMIN : On duplique le fichier pour être sûr que Vercel le trouve.
+import { newsSources } from './newsSources.js';
 
 const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
 const supabaseServiceKey = process.env.REACT_APP_SUPABASE_SERVICE_KEY;
@@ -16,7 +17,7 @@ export default async function handler(req, res) {
         return res.status(401).json({ error: 'Accès non autorisé' });
     }
 
-    console.log('Cron job démarré : Récupération et enrichissement des articles.');
+    console.log('Cron job démarré : Récupération et enrichissement complet des articles.');
     const allArticlesToInsert = [];
 
     for (const source of newsSources) {
@@ -35,11 +36,11 @@ export default async function handler(req, res) {
                         pubDate: new Date(item.pubDate),
                         source_name: source.name,
                         image_url: item.enclosure?.url || null,
-                        // ✅ Ta très bonne idée : des valeurs par défaut pour la robustesse.
+                        guid: item.guid,
                         orientation: source.orientation || 'neutre',
                         category: source.category || 'généraliste',
-                        // ✅ Mon ajout : on sauvegarde aussi le guid.
-                        guid: item.guid
+                        // ✅ AJOUT : On crée un tableau de tags en utilisant la catégorie.
+                        tags: source.category ? [source.category] : []
                     });
                 }
             }
