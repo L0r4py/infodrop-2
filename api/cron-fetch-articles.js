@@ -1,10 +1,8 @@
 // Fichier : api/cron-fetch-articles.js
-// VERSION D'AUTOPSIE : On exécute chaque bloc et on rapporte le résultat.
-// Source de test : Le Parisien (stable)
+// Version ULTIME : Traitement par lots pour respecter les limites de Vercel.
 
 import { createClient } from '@supabase/supabase-js';
 import RssParser from 'rss-parser';
-// On importe newsSources juste pour s'assurer que l'import lui-même ne plante pas.
 import { newsSources } from './newsSources.js';
 
 export default async function handler(req, res) {
@@ -12,67 +10,70 @@ export default async function handler(req, res) {
         return res.status(401).json({ error: 'Accès non autorisé' });
     }
 
-    const report = {
-        step1_auth: 'Succès',
-        step2_supabase_client_init: 'Pas encore testé',
-        step3_rss_parser_init: 'Pas encore testé',
-        step4_single_feed_parse: 'Pas encore testé',
-        step5_supabase_insert: 'Pas encore testé',
-        final_result: 'Incomplet'
-    };
-
     try {
-        // --- ÉTAPE 2 : Initialisation du client Supabase ---
-        const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
-        const supabaseServiceKey = process.env.REACT_APP_SUPABASE_SERVICE_KEY;
-        if (!supabaseUrl || !supabaseServiceKey) throw new Error("Variables Supabase manquantes");
+        console.log('Cron job par LOTS démarré.');
+        const startTime = Date.now();
 
-        const supabase = createClient(supabaseUrl, supabaseServiceKey);
-        report.step2_supabase_client_init = 'Succès';
+        const supabase = createClient(process.env.REACT_APP_SUPABASE_URL, process.env.REACT_APP_SUPABASE_SERVICE_KEY);
+        const parser = new RssParser({ timeout: 8000 });
 
-        // --- ÉTAPE 3 : Initialisation du RssParser ---
-        const parser = new RssParser({ timeout: 10000 }); // Timeout augmenté à 10s pour être sûr
-        report.step3_rss_parser_init = 'Succès';
-
-        // --- ÉTAPE 4 : Test de parsing sur UNE SEULE source ---
-        let articlesToInsert = [];
-        try {
-            // ✅ CORRECTION : Utilisation du flux du Parisien
-            const singleSource = { name: "Le Parisien", url: "https://feeds.leparisien.fr/leparisien/rss" };
-            const feed = await parser.parseURL(singleSource.url);
-
-            articlesToInsert = (feed.items || []).map(item => {
-                if (item.title && item.link && item.pubDate && item.guid) {
-                    return { title: item.title, link: item.link, pubDate: new Date(item.pubDate), guid: item.guid, source_name: singleSource.name };
-                }
-                return null;
-            }).filter(Boolean); // Retire les éléments nuls
-
-            report.step4_single_feed_parse = `Succès - ${articlesToInsert.length} articles trouvés`;
-        } catch (parseError) {
-            report.step4_single_feed_parse = `ÉCHEC: ${parseError.message}`;
-            throw parseError; // On arrête ici si le parsing échoue
-        }
-
-        // --- ÉTAPE 5 : Test d'insertion dans Supabase ---
-        if (articlesToInsert.length > 0) {
-            const { error: dbError } = await supabase.from('articles').upsert(articlesToInsert, { onConflict: 'link' });
-            if (dbError) {
-                report.step5_supabase_insert = `ÉCHEC: ${dbError.message}`;
-                throw dbError;
-            } else {
-                report.step5_supabase_insert = 'Succès';
+        const fetchFeed = async (source) => {
+            if (!source || !source.url) return [];
+            try {
+                const feed = await parser.parseURL(source.url);
+                return (feed.items || []).map(item => {
+                    if (item.title && item.link && item.pubDate && item.guid) {
+                        return { title: item.title, link: item.link, pubDate: new Date(item.pubDate), source_name: source.name, image_url: item.enclosure?.url || null, guid: item.guid, orientation: source.orientation || 'neutre', category: source.category || 'généraliste', tags: source.category ? [source.category] : [] };
+                    }
+                    return null;
+                }).filter(Boolean);
+            } catch (error) {
+                console.warn(`⚠️ Le flux ${source.name} a échoué (ignoré): ${error.message}`);
+                return [];
             }
-        } else {
-            report.step5_supabase_insert = 'Ignoré (aucun article à insérer)';
+        };
+
+        const BATCH_SIZE = 10; // On traite 10 flux à la fois.
+        let allArticlesToInsert = [];
+        let totalSuccess = 0;
+        let totalErrors = 0;
+
+        for (let i = 0; i < newsSources.length; i += BATCH_SIZE) {
+            const batch = newsSources.slice(i, i + BATCH_SIZE);
+            console.log(`Traitement du lot ${i / BATCH_SIZE + 1}... (${batch.length} sources)`);
+
+            const promises = batch.map(fetchFeed);
+            const results = await Promise.allSettled(promises);
+
+            results.forEach(r => {
+                if (r.status === 'fulfilled') {
+                    allArticlesToInsert.push(...r.value);
+                    totalSuccess++;
+                } else {
+                    totalErrors++;
+                }
+            });
         }
 
-        report.final_result = 'Toutes les étapes ont réussi !';
-        return res.status(200).json({ report });
+        console.log(`📊 Traitement des flux terminé: ${totalSuccess} succès, ${totalErrors} échecs.`);
+
+        if (allArticlesToInsert.length === 0) {
+            return res.status(200).json({ message: 'Aucun article trouvé, mais le script a fonctionné.' });
+        }
+
+        console.log(`📝 ${allArticlesToInsert.length} articles à insérer...`);
+        const { data, error: dbError } = await supabase.from('articles').upsert(allArticlesToInsert, { onConflict: 'link' }).select();
+
+        if (dbError) throw new Error(`Erreur Supabase: ${dbError.message}`);
+
+        const insertedCount = data ? data.length : 0;
+        const duration = Date.now() - startTime;
+        console.log(`✅ Cron terminé en ${duration}ms`);
+
+        return res.status(200).json({ success: true, message: `${insertedCount} articles insérés avec succès`, articles_found: allArticlesToInsert.length, articles_inserted: insertedCount });
 
     } catch (e) {
-        // Si une erreur se produit, on renvoie le rapport dans son état actuel.
-        report.final_result = `ÉCHEC à l'étape en cours: ${e.message}`;
-        return res.status(500).json({ report });
+        console.error("❌ ERREUR FATALE:", e.message);
+        return res.status(500).json({ error: "Erreur critique dans le CRON", message: e.message });
     }
 }
