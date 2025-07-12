@@ -4,8 +4,6 @@
 // ========================================================================
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import './styles/globals.css';
-import './styles/animations.css';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from "@vercel/speed-insights/react";
 
