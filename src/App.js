@@ -1,6 +1,6 @@
 // ========================================================================
-// Fichier COMPLET et ROBUSTE : src/App.js
-// Ce code remplace l'intégralité de votre fichier existant.
+// Fichier INTÉGRAL, COMPLET et STABLE : src/App.js
+// Ce code remplace l'intégralité de votre fichier existant, sans aucune omission.
 // ========================================================================
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -64,7 +64,6 @@ const InfodropApp = () => {
     xpAnimationPoints
   } = useGame();
 
-  // On récupère les données brutes du hook useNews
   const {
     news,
     loading: isLoading,
@@ -74,42 +73,27 @@ const InfodropApp = () => {
     getStats
   } = useNews();
 
-  // État des modals
   const [menuOpen, setMenuOpen] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
   const [showBadgeShop, setShowBadgeShop] = useState(false);
   const [showReferral, setShowReferral] = useState(false);
   const [show360, setShow360] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
-
-  // État de connexion
   const [isOnline, setIsOnline] = useState(navigator.onLine);
-
-  // État des statistiques globales
   const [globalStats, setGlobalStats] = useState(null);
 
-  // On gère l'état des filtres directement dans App.js
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedTags, setSelectedTags] = useState([]);
 
-  // **LA CORRECTION CLÉ EST ICI**
-  // On calcule la liste des articles filtrés.
-  // `useMemo` met en cache le résultat et ne le recalcule que si `news` ou les filtres changent.
   const filteredNews = useMemo(() => {
-    // Si `news` est undefined ou null, on retourne un tableau vide pour éviter le crash.
-    if (!news) {
-      return [];
-    }
-
-    // Si on a des données, on filtre.
+    if (!news) return [];
     return news.filter(article => {
       const categoryMatch = selectedCategory === 'all' || article.category === selectedCategory;
       const tagsMatch = selectedTags.length === 0 || (article.tags && selectedTags.some(tag => article.tags.includes(tag)));
       return categoryMatch && tagsMatch;
     });
-  }, [news, selectedCategory, selectedTags]); // Dépendances du calcul
+  }, [news, selectedCategory, selectedTags]);
 
-  // On calcule la liste de tous les tags disponibles, avec la même sécurité
   const allTags = useMemo(() => {
     if (!news) return [];
     const tagsSet = new Set();
@@ -121,15 +105,11 @@ const InfodropApp = () => {
     return Array.from(tagsSet).sort();
   }, [news]);
 
-  // Fonctions pour manipuler les filtres
   const toggleTag = (tag) => {
-    setSelectedTags(prev =>
-      prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
-    );
+    setSelectedTags(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]);
   };
   const clearTags = () => setSelectedTags([]);
 
-  // Gestion de la connexion
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
@@ -141,7 +121,23 @@ const InfodropApp = () => {
     };
   }, []);
 
-  // Gestionnaire de lecture d'article
+  useEffect(() => {
+    if (getStats) {
+      const loadStats = async () => {
+        const stats = await getStats();
+        if (stats) {
+          setGlobalStats({
+            total_articles: stats.total || 0,
+            active_sources: Object.keys(stats.bySource || {}).length || 0,
+          });
+        }
+      };
+      loadStats();
+      const interval = setInterval(loadStats, 5 * 60 * 1000);
+      return () => clearInterval(interval);
+    }
+  }, [getStats]);
+
   const handleRead = useCallback(async (newsId) => {
     const article = filteredNews.find(n => n.id === newsId);
     if (article && markAsRead && handleReadNews) {
@@ -150,14 +146,12 @@ const InfodropApp = () => {
     }
   }, [filteredNews, markAsRead, handleReadNews]);
 
-  // Gestionnaire de rafraîchissement
   const handleRefresh = useCallback(() => {
     if (isOnline && forceRefresh) {
       forceRefresh();
     }
   }, [isOnline, forceRefresh]);
 
-  // Fonctions de remplacement pour les opérations admin
   const addNews = () => alert("Fonctionnalité admin non implémentée.");
   const updateNews = () => alert("Fonctionnalité admin non implémentée.");
   const deleteNews = () => alert("Fonctionnalité admin non implémentée.");
@@ -165,31 +159,58 @@ const InfodropApp = () => {
 
   return (
     <div className={`min-h-screen ${darkMode ? 'bg-slate-950 text-white' : 'bg-gray-50 text-gray-900'} transition-colors`}>
-      {/* ... Le reste du JSX est identique mais dépend maintenant de variables sûres ... */}
-      <Header userStats={userStats} onMenuClick={() => setMenuOpen(true)} />
+      <Header userStats={userStats} onMenuClick={() => setMenuOpen(true)} globalStats={globalStats} />
       <InfoTicker />
       <MobileMenu isOpen={menuOpen} onClose={() => setMenuOpen(false)} darkMode={darkMode} isAdmin={isAdmin} onShow360={() => setShow360(true)} onShowAdmin={() => setShowAdmin(true)} onShowReferral={() => setShowReferral(true)} onShowBadgeShop={() => setShowBadgeShop(true)} onShowAbout={() => setShowAbout(true)} />
+
       <main className="container mx-auto px-4 py-6 pb-20 max-w-7xl">
         <DiversityScore darkMode={darkMode} score={userStats?.diversityScore || 0} articlesRead={userStats?.readCount || 0} orientationCounts={userStats?.orientationCounts || {}} />
-        <NewsFilters
-          darkMode={darkMode}
-          selectedCategory={selectedCategory}
-          setSelectedCategory={setSelectedCategory}
-          selectedTags={selectedTags}
-          toggleTag={toggleTag}
-          allTags={allTags}
-          clearTags={clearTags}
-          articleCount={filteredNews.length}
-        />
-        <NewsList news={filteredNews} onRead={handleRead} darkMode={darkMode} isLoading={isLoading} error={error} onRefresh={handleRefresh} />
+
+        {globalStats && (
+          <div className={`grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+            <div className={`p-4 rounded-lg text-center ${darkMode ? 'bg-slate-800' : 'bg-white shadow-sm'}`}><div className="text-2xl font-bold text-blue-500">{globalStats.total_articles}</div><div className="text-sm">Articles total</div></div>
+            <div className={`p-4 rounded-lg text-center ${darkMode ? 'bg-slate-800' : 'bg-white shadow-sm'}`}><div className="text-2xl font-bold text-emerald-500">{globalStats.active_sources}</div><div className="text-sm">Sources actives</div></div>
+            <div className={`p-4 rounded-lg text-center ${darkMode ? 'bg-slate-800' : 'bg-white shadow-sm'}`}><div className="text-2xl font-bold text-purple-500">{news?.length || 0}</div><div className="text-sm">Articles affichés</div></div>
+            <div className={`p-4 rounded-lg text-center ${darkMode ? 'bg-slate-800' : 'bg-white shadow-sm'}`}><div className="text-2xl font-bold text-orange-500">{userStats?.readCount || 0}</div><div className="text-sm">Articles lus</div></div>
+          </div>
+        )}
+
+        <NewsFilters darkMode={darkMode} selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} selectedTags={selectedTags} toggleTag={toggleTag} allTags={allTags} clearTags={clearTags} articleCount={filteredNews.length} />
+        <NewsList news={filteredNews} onRead={handleRead} darkMode={darkMode} isLoading={isLoading} error={error} onRefresh={handleRefresh} showRefreshButton={true} showStats={true} formatDate={formatDate} />
       </main>
+
+      <button onClick={handleRefresh} disabled={isLoading || !isOnline} className={`md:hidden fixed bottom-24 right-4 z-40 w-14 h-14 rounded-full shadow-lg flex items-center justify-center transition-all duration-200 transform ${darkMode ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-500 hover:bg-blue-600'} ${isLoading ? 'scale-95 opacity-75' : 'hover:scale-105'} ${!isOnline ? 'opacity-50 cursor-not-allowed' : ''}`} title={isOnline ? "Actualiser" : "Hors ligne"}>
+        {isOnline ? <RefreshCw className={`w-6 h-6 text-white ${isLoading ? 'animate-spin' : ''}`} /> : <WifiOff className="w-6 h-6 text-white" />}
+      </button>
+
+      <XPAnimation show={showXPAnimation} points={xpAnimationPoints} />
+      <GradeUpAnimation show={gradeUpAnimation} oldGrade={userStats.gradeTitle} newGrade={grades[userStats.grade - 1]?.title} newLevel={userStats.grade} />
+      <ProgressBar userStats={userStats} grades={grades} />
       <Footer />
-      {/* ... et ainsi de suite pour le reste des composants ... */}
+
+      {showAdmin && <AdminPanel darkMode={darkMode} news={filteredNews} onClose={() => setShowAdmin(false)} onAddNews={addNews} onUpdateNews={updateNews} onDeleteNews={deleteNews} formatDate={formatDate} />}
+      {showReferral && <ReferralModal darkMode={darkMode} userStats={userStats} onClose={() => setShowReferral(false)} />}
+      {showBadgeShop && <RewardsCenter darkMode={darkMode} userStats={userStats} onClose={() => setShowBadgeShop(false)} onPurchase={purchaseBadge} />}
+      {show360 && <Infodrop360 darkMode={darkMode} onClose={() => setShow360(false)} userStats={userStats} />}
+      {showAbout && <AboutPage darkMode={darkMode} onClose={() => setShowAbout(false)} />}
+
+      {error && !isLoading && (
+        <div className="fixed bottom-4 left-4 right-4 md:left-auto md:right-4 md:w-96 z-50">
+          <div className={`p-4 rounded-lg shadow-lg border ${darkMode ? 'bg-red-900/90 border-red-700 text-red-100' : 'bg-red-50 border-red-200 text-red-800'}`}>
+            <div className="flex items-start gap-3">
+              <span className="text-lg">⚠️</span>
+              <div className="flex-1">
+                <p className="font-medium">Erreur de chargement</p><p className="text-sm mt-1 opacity-90">{error}</p>
+              </div>
+              <button onClick={handleRefresh} className="text-sm underline hover:no-underline">Réessayer</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
-// Le composant racine qui fournit tous les contextes
 const App = () => {
   return (
     <AuthProvider>
