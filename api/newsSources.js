@@ -74,16 +74,16 @@ export const newsSources = [
     { name: "La Croix (Politique)", url: "https://www.la-croix.com/feeds/rss/politique.xml", orientation: "centre-droit", category: "politique" },
     { name: "La Croix (Culture)", url: "https://www.la-croix.com/feeds/rss/culture.xml", orientation: "centre-droit", category: "culture" },
     { name: "L'Opinion", url: "https://feeds.feedburner.com/lopinion", orientation: "droite", category: "politique" },
-    { name: "Valeurs Actuelles", url: "https://www.valeursactuelles.com/feed?post_type=post", orientation: "extreme-droite", category: "politique" },
-    { name: "Causeur", url: "https://www.causeur.fr/feed", orientation: "extreme-droite", category: "politique" },
+    { name: "Valeurs Actuelles", url: "https://www.valeursactuelles.com/feed?post_type=post", orientation: "extrême-droite", category: "politique" },
+    { name: "Causeur", url: "https://www.causeur.fr/feed", orientation: "extrême-droite", category: "politique" },
     { name: "BFMTV", url: "https://www.bfmtv.com/rss/news-24-7/", orientation: "centre-droit", category: "tv" },
     { name: "BFMTV (People)", url: "https://www.bfmtv.com/rss/people/", orientation: "centre-droit", category: "people" },
     { name: "BFMTV (Crypto)", url: "https://www.bfmtv.com/rss/crypto/", orientation: "centre-droit", category: "crypto" },
     { name: "RMC", url: "https://rmc.bfmtv.com/rss/actualites/", orientation: "centre", category: "radio" },
-    { name: "Révolution Permanente", url: "https://www.revolutionpermanente.fr/spip.php?page=backend_portada", orientation: "extreme-gauche", category: "politique" },
-    { name: "Cnews", url: "https://www.cnews.fr/rss.xml", orientation: "extreme-droite", category: "tv" },
-    { name: "Basta!", url: "https://basta.media/spip.php?page=backend", orientation: "extreme-gauche", category: "politique" },
-    { name: "Ballast", url: "https://www.revue-ballast.fr/feed/", orientation: "extreme-gauche", category: "politique" },
+    { name: "Révolution Permanente", url: "https://www.revolutionpermanente.fr/spip.php?page=backend_portada", orientation: "extrême-gauche", category: "politique" },
+    { name: "Cnews", url: "https://www.cnews.fr/rss.xml", orientation: "extrême-droite", category: "tv" },
+    { name: "Basta!", url: "https://basta.media/spip.php?page=backend", orientation: "extrême-gauche", category: "politique" },
+    { name: "Ballast", url: "https://www.revue-ballast.fr/feed/", orientation: "extrême-gauche", category: "politique" },
 
     // === PRESSE ÉTRANGÈRE ===
     { name: "RTBF", url: "https://rss.rtbf.be/article/rss/highlight_rtbf_info.xml?source=internal", orientation: "centre-gauche", category: "international" },
@@ -104,11 +104,11 @@ export const newsSources = [
     { name: "Public", url: "https://www.public.fr/feed", orientation: "neutre", category: "people" },
 
     // --- ALTERNATIF / OPINION / GÉOPOLITIQUE ---
-    { name: "Réseau International", url: "https://reseauinternational.net/feed/", orientation: "extreme-droite", category: "alternatif" },
-    { name: "Le Saker Francophone", url: "https://lesakerfrancophone.fr/feed/", orientation: "extreme-droite", category: "alternatif" },
-    { name: "Geopolintel", url: "https://geopolintel.fr/spip.php?page=backend", orientation: "extreme-droite", category: "alternatif" },
-    { name: "Nexus", url: "https://nexus.fr/feed/", orientation: "extreme-droite", category: "alternatif" },
-    { name: "Enquête du Jour", url: "https://enquetedujour.fr/feed/", orientation: "extreme-droite", category: "alternatif" },
+    { name: "Réseau International", url: "https://reseauinternational.net/feed/", orientation: "extrême-droite", category: "alternatif" },
+    { name: "Le Saker Francophone", url: "https://lesakerfrancophone.fr/feed/", orientation: "extrême-droite", category: "alternatif" },
+    { name: "Geopolintel", url: "https://geopolintel.fr/spip.php?page=backend", orientation: "extrême-droite", category: "alternatif" },
+    { name: "Nexus", url: "https://nexus.fr/feed/", orientation: "extrême-droite", category: "alternatif" },
+    { name: "Enquête du Jour", url: "https://enquetedujour.fr/feed/", orientation: "extrême-droite", category: "alternatif" },
 
     // --- EUROPÉEN / SCIENCE / COMMUNICATION ---
     { name: "Le Grand Continent", url: "https://legrandcontinent.eu/fr/feed/", orientation: "centre-gauche", category: "europe" },
