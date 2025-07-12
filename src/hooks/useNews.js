@@ -1,7 +1,7 @@
 // src/hooks/useNews.js
-// Hook pour gérer les actualités avec Supabase
+// Hook pour gérer les actualités avec chargement incrémental
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 
 const useNews = () => {
@@ -12,24 +12,63 @@ const useNews = () => {
         category: 'all',
         orientation: null,
         tags: [],
-        limit: 200
+        limit: 500 // Augmenter la limite
     });
 
-    // Fonction pour récupérer les articles
-    const fetchArticles = useCallback(async () => {
+    // Référence pour stocker le timestamp du dernier fetch
+    const lastFetchTime = useRef(null);
+    const fetchInterval = useRef(null);
+
+    // Fonction pour transformer les données
+    const transformArticle = (article) => ({
+        id: article.id,
+        title: article.title,
+        summary: article.summary || article.title,
+        url: article.url,
+        source: article.source_name,
+        sourceId: article.source_id,
+        publishedAt: article.published_at,
+        timestamp: new Date(article.published_at).getTime(),
+        image: article.image_url,
+        orientation: article.orientation || 'neutre',
+        tags: article.tags || [],
+        category: mapTagsToCategory(article.tags || []),
+        isRead: false
+    });
+
+    // Mapper les tags vers une catégorie principale
+    const mapTagsToCategory = (tags) => {
+        if (tags.includes('politique')) return 'politics';
+        if (tags.includes('économie') || tags.includes('finance')) return 'economy';
+        if (tags.includes('société') || tags.includes('social')) return 'society';
+        if (tags.includes('international') || tags.includes('monde')) return 'international';
+        if (tags.includes('culture')) return 'culture';
+        if (tags.includes('tech') || tags.includes('technologie') || tags.includes('sciences')) return 'tech';
+        if (tags.includes('sport')) return 'sport';
+        return 'general';
+    };
+
+    // Fonction pour charger les articles initiaux (2 dernières heures)
+    const loadInitialArticles = useCallback(async () => {
         try {
             setLoading(true);
             setError(null);
+
+            // Calculer le timestamp d'il y a 2 heures
+            const twoHoursAgo = new Date();
+            twoHoursAgo.setHours(twoHoursAgo.getHours() - 2);
+
+            console.log('📥 Chargement initial des articles depuis:', twoHoursAgo.toLocaleString());
 
             // Construire la requête
             let query = supabase
                 .from('articles')
                 .select('*')
+                .gte('published_at', twoHoursAgo.toISOString())
                 .order('published_at', { ascending: false });
 
             // Appliquer les filtres
             if (filters.category && filters.category !== 'all') {
-                // Mapper les catégories aux tags
                 const categoryTags = {
                     'politics': ['politique'],
                     'economy': ['économie', 'finance'],
@@ -54,8 +93,8 @@ const useNews = () => {
                 query = query.contains('tags', filters.tags);
             }
 
-            // Limiter le nombre de résultats
-            query = query.limit(filters.limit || 200);
+            // Limiter les résultats
+            query = query.limit(filters.limit);
 
             // Exécuter la requête
             const { data, error: fetchError } = await query;
@@ -64,57 +103,129 @@ const useNews = () => {
                 throw fetchError;
             }
 
-            // Transformer les données pour correspondre au format attendu
-            const transformedData = (data || []).map(article => ({
-                id: article.id,
-                title: article.title,
-                summary: article.summary || article.title,
-                url: article.url,
-                source: article.source_name,
-                sourceId: article.source_id,
-                publishedAt: article.published_at,
-                timestamp: new Date(article.published_at).getTime(),
-                image: article.image_url,
-                orientation: article.orientation || 'neutre',
-                tags: article.tags || [],
-                category: mapTagsToCategory(article.tags || []),
-                isRead: false // Géré côté client
-            }));
-
+            // Transformer et définir les articles
+            const transformedData = (data || []).map(transformArticle);
             setNews(transformedData);
 
-            console.log(`✅ ${transformedData.length} articles chargés`);
+            // Sauvegarder le timestamp du dernier fetch
+            lastFetchTime.current = new Date();
+
+            console.log(`✅ ${transformedData.length} articles chargés initialement`);
 
         } catch (err) {
-            console.error('❌ Erreur récupération articles:', err);
+            console.error('❌ Erreur chargement initial:', err);
             setError(err.message);
         } finally {
             setLoading(false);
         }
     }, [filters]);
 
-    // Mapper les tags vers une catégorie principale
-    const mapTagsToCategory = (tags) => {
-        if (tags.includes('politique')) return 'politics';
-        if (tags.includes('économie') || tags.includes('finance')) return 'economy';
-        if (tags.includes('société') || tags.includes('social')) return 'society';
-        if (tags.includes('international') || tags.includes('monde')) return 'international';
-        if (tags.includes('culture')) return 'culture';
-        if (tags.includes('tech') || tags.includes('technologie') || tags.includes('sciences')) return 'tech';
-        if (tags.includes('sport')) return 'sport';
-        return 'general';
-    };
+    // Fonction pour récupérer seulement les nouveaux articles
+    const fetchNewArticles = useCallback(async () => {
+        try {
+            if (!lastFetchTime.current) return;
 
-    // Charger les articles au montage et quand les filtres changent
+            const since = lastFetchTime.current.toISOString();
+            console.log('🔄 Recherche de nouveaux articles depuis:', lastFetchTime.current.toLocaleString());
+
+            // Requête pour les nouveaux articles seulement
+            let query = supabase
+                .from('articles')
+                .select('*')
+                .gt('published_at', since)
+                .order('published_at', { ascending: false });
+
+            // Appliquer les mêmes filtres
+            if (filters.category && filters.category !== 'all') {
+                const categoryTags = {
+                    'politics': ['politique'],
+                    'economy': ['économie', 'finance'],
+                    'society': ['société', 'social'],
+                    'international': ['international', 'monde'],
+                    'culture': ['culture'],
+                    'tech': ['tech', 'technologie', 'sciences'],
+                    'sport': ['sport']
+                };
+
+                const tags = categoryTags[filters.category];
+                if (tags) {
+                    query = query.contains('tags', tags);
+                }
+            }
+
+            if (filters.orientation) {
+                query = query.eq('orientation', filters.orientation);
+            }
+
+            if (filters.tags && filters.tags.length > 0) {
+                query = query.contains('tags', filters.tags);
+            }
+
+            const { data, error: fetchError } = await query;
+
+            if (fetchError) {
+                console.error('❌ Erreur récupération nouveaux articles:', fetchError);
+                return;
+            }
+
+            if (data && data.length > 0) {
+                console.log(`📰 ${data.length} nouveaux articles trouvés`);
+
+                // Transformer les nouveaux articles
+                const newArticles = data.map(transformArticle);
+
+                // Ajouter les nouveaux articles au début, en évitant les doublons
+                setNews(prevNews => {
+                    const existingIds = new Set(prevNews.map(article => article.id));
+                    const uniqueNewArticles = newArticles.filter(article => !existingIds.has(article.id));
+
+                    // Limiter le nombre total d'articles pour éviter la surcharge mémoire
+                    const combined = [...uniqueNewArticles, ...prevNews];
+                    const limited = combined.slice(0, 1000); // Garder max 1000 articles
+
+                    return limited;
+                });
+            }
+
+            // Mettre à jour le timestamp
+            lastFetchTime.current = new Date();
+
+        } catch (err) {
+            console.error('❌ Erreur fetch nouveaux articles:', err);
+        }
+    }, [filters]);
+
+    // Charger les articles initiaux au montage
     useEffect(() => {
-        fetchArticles();
-    }, [fetchArticles]);
+        loadInitialArticles();
+    }, [loadInitialArticles]);
+
+    // Configurer l'intervalle de mise à jour (30 minutes)
+    useEffect(() => {
+        // Nettoyer l'ancien intervalle
+        if (fetchInterval.current) {
+            clearInterval(fetchInterval.current);
+        }
+
+        // Créer un nouvel intervalle de 30 minutes
+        fetchInterval.current = setInterval(() => {
+            console.log('⏰ Mise à jour automatique des articles...');
+            fetchNewArticles();
+        }, 30 * 60 * 1000); // 30 minutes
+
+        // Nettoyer à la destruction
+        return () => {
+            if (fetchInterval.current) {
+                clearInterval(fetchInterval.current);
+            }
+        };
+    }, [fetchNewArticles]);
 
     // S'abonner aux changements en temps réel
     useEffect(() => {
-        // Créer un canal pour les mises à jour en temps réel
+        // Créer un canal pour les insertions en temps réel
         const channel = supabase
-            .channel('articles-changes')
+            .channel('realtime-articles')
             .on(
                 'postgres_changes',
                 {
@@ -123,26 +234,38 @@ const useNews = () => {
                     table: 'articles'
                 },
                 (payload) => {
-                    console.log('📨 Nouvel article reçu:', payload.new.title);
+                    console.log('🆕 Article en temps réel:', payload.new.title);
 
-                    // Ajouter le nouvel article en début de liste
-                    const newArticle = {
-                        id: payload.new.id,
-                        title: payload.new.title,
-                        summary: payload.new.summary || payload.new.title,
-                        url: payload.new.url,
-                        source: payload.new.source_name,
-                        sourceId: payload.new.source_id,
-                        publishedAt: payload.new.published_at,
-                        timestamp: new Date(payload.new.published_at).getTime(),
-                        image: payload.new.image_url,
-                        orientation: payload.new.orientation || 'neutre',
-                        tags: payload.new.tags || [],
-                        category: mapTagsToCategory(payload.new.tags || []),
-                        isRead: false
-                    };
+                    // Transformer et ajouter l'article
+                    const newArticle = transformArticle(payload.new);
 
-                    setNews(prev => [newArticle, ...prev]);
+                    // Vérifier si l'article correspond aux filtres actuels
+                    let shouldAdd = true;
+
+                    if (filters.category && filters.category !== 'all') {
+                        shouldAdd = newArticle.category === filters.category;
+                    }
+
+                    if (shouldAdd && filters.orientation) {
+                        shouldAdd = newArticle.orientation === filters.orientation;
+                    }
+
+                    if (shouldAdd && filters.tags && filters.tags.length > 0) {
+                        shouldAdd = filters.tags.some(tag => newArticle.tags.includes(tag));
+                    }
+
+                    if (shouldAdd) {
+                        setNews(prev => {
+                            // Éviter les doublons
+                            if (prev.some(article => article.id === newArticle.id)) {
+                                return prev;
+                            }
+
+                            // Ajouter au début et limiter
+                            const updated = [newArticle, ...prev];
+                            return updated.slice(0, 1000);
+                        });
+                    }
                 }
             )
             .subscribe();
@@ -151,12 +274,13 @@ const useNews = () => {
         return () => {
             supabase.removeChannel(channel);
         };
-    }, []);
+    }, [filters]);
 
     // Fonction pour rafraîchir manuellement
     const refresh = useCallback(async () => {
-        await fetchArticles();
-    }, [fetchArticles]);
+        console.log('🔄 Rafraîchissement manuel...');
+        await loadInitialArticles();
+    }, [loadInitialArticles]);
 
     // Fonction pour mettre à jour les filtres
     const updateFilters = useCallback((newFilters) => {
@@ -192,8 +316,15 @@ const useNews = () => {
             return acc;
         }, {});
 
+        const last24h = news.filter(item => {
+            const articleTime = new Date(item.publishedAt).getTime();
+            const dayAgo = Date.now() - (24 * 60 * 60 * 1000);
+            return articleTime > dayAgo;
+        }).length;
+
         return {
             total,
+            last24h,
             byOrientation,
             byCategory,
             bySource
@@ -208,7 +339,8 @@ const useNews = () => {
         updateFilters,
         refresh,
         markAsRead,
-        getStats
+        getStats,
+        lastUpdate: lastFetchTime.current
     };
 };
 
