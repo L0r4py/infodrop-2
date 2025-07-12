@@ -1,348 +1,291 @@
-// Fichier : /src/hooks/useNews.js
-// Correction : Remplacement de l'export par défaut par un export nommé.
+// ========================================================================
+// Fichier COMPLET : src/App.js
+// Ce code remplace l'intégralité de votre fichier existant.
+// ========================================================================
 
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { supabase } from '../lib/supabase';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import './App.css';
+import './styles/globals.css';
+import './styles/animations.css';
+import { Analytics } from '@vercel/analytics/react';
+import { SpeedInsights } from "@vercel/speed-insights/react";
 
-// CHANGEMENT 1 : Le mot "export" est ajouté ici
-export const useNews = () => {
-    const [news, setNews] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
-    const [filters, setFilters] = useState({
-        category: 'all',
-        orientation: null,
-        tags: [],
-        limit: 500 // Augmenter la limite
-    });
+// Contexts
+import { AuthProvider } from './contexts/AuthContext';
+import { GameProvider } from './contexts/GameContext';
+import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 
-    // Référence pour stocker le timestamp du dernier fetch
-    const lastFetchTime = useRef(null);
-    const fetchInterval = useRef(null);
+// Composants communs
+import Header from './components/common/Header';
+import InfoTicker from './components/common/InfoTicker';
+import Footer from './components/common/Footer';
+import MobileMenu from './components/common/MobileMenu';
+import ProgressBar from './components/common/ProgressBar';
 
-    // Fonction pour transformer les données
-    const transformArticle = (article) => ({
-        id: article.id,
-        title: article.title,
-        summary: article.summary || article.title,
-        url: article.url,
-        source: article.source_name,
-        sourceId: article.source_id,
-        publishedAt: article.published_at,
-        timestamp: new Date(article.published_at).getTime(),
-        image: article.image_url,
-        orientation: article.orientation || 'neutre',
-        tags: article.tags || [],
-        category: mapTagsToCategory(article.tags || []),
-        isRead: false
-    });
+// Composants news
+import NewsFilters from './components/news/NewsFilters';
+import NewsList from './components/news/NewsList';
 
-    // Mapper les tags vers une catégorie principale
-    const mapTagsToCategory = (tags) => {
-        if (tags.includes('politique')) return 'politics';
-        if (tags.includes('économie') || tags.includes('finance')) return 'economy';
-        if (tags.includes('société') || tags.includes('social')) return 'society';
-        if (tags.includes('international') || tags.includes('monde')) return 'international';
-        if (tags.includes('culture')) return 'culture';
-        if (tags.includes('tech') || tags.includes('technologie') || tags.includes('sciences')) return 'tech';
-        if (tags.includes('sport')) return 'sport';
-        return 'general';
-    };
+// Composants stats
+import DiversityScore from './components/stats/DiversityScore';
 
-    // Fonction pour charger les articles initiaux (2 dernières heures)
-    const loadInitialArticles = useCallback(async () => {
-        try {
-            setLoading(true);
-            setError(null);
+// Modals
+import AdminPanel from './components/modals/AdminPanel';
+import RewardsCenter from './components/modals/RewardsCenter';
+import ReferralModal from './components/modals/ReferralModal';
+import Infodrop360 from './components/modals/Infodrop360';
+import AboutPage from './components/modals/AboutPage';
 
-            // Calculer le timestamp d'il y a 2 heures
-            const twoHoursAgo = new Date();
-            twoHoursAgo.setHours(twoHoursAgo.getHours() - 2);
+// Animations
+import XPAnimation from './components/animations/XPAnimation';
+import GradeUpAnimation from './components/animations/GradeUpAnimation';
 
-            console.log('📥 Chargement initial des articles depuis:', twoHoursAgo.toLocaleString());
+// Hooks
+import { useGame } from './contexts/GameContext';
+import { useAuth } from './contexts/AuthContext';
+import { useNews } from './hooks/useNews';
 
-            // Construire la requête
-            let query = supabase
-                .from('articles')
-                .select('*')
-                .gte('published_at', twoHoursAgo.toISOString())
-                .order('published_at', { ascending: false });
+// Data
+import { grades } from './data/rewards';
 
-            // Appliquer les filtres
-            if (filters.category && filters.category !== 'all') {
-                const categoryTags = {
-                    'politics': ['politique'],
-                    'economy': ['économie', 'finance'],
-                    'society': ['société', 'social'],
-                    'international': ['international', 'monde'],
-                    'culture': ['culture'],
-                    'tech': ['tech', 'technologie', 'sciences'],
-                    'sport': ['sport']
-                };
+// Icônes
+import { RefreshCw, Wifi, WifiOff } from 'lucide-react';
 
-                const tags = categoryTags[filters.category];
-                if (tags) {
-                    query = query.contains('tags', tags);
-                }
+// Composant principal de l'application
+const InfodropApp = () => {
+    const { darkMode } = useTheme();
+    const { user, isAdmin } = useAuth();
+    const {
+        userStats,
+        handleReadNews,
+        purchaseBadge,
+        gradeUpAnimation,
+        showXPAnimation,
+        xpAnimationPoints
+    } = useGame();
+
+    // On récupère les données brutes et les fonctions du hook `useNews`
+    const {
+        news,
+        loading: isLoading,
+        error,
+        refresh: forceRefresh,
+        markAsRead,
+        getStats
+    } = useNews();
+
+    // État des modals
+    const [menuOpen, setMenuOpen] = useState(false);
+    const [showAdmin, setShowAdmin] = useState(false);
+    const [showBadgeShop, setShowBadgeShop] = useState(false);
+    const [showReferral, setShowReferral] = useState(false);
+    const [show360, setShow360] = useState(false);
+    const [showAbout, setShowAbout] = useState(false);
+
+    // État local pour l'animation XP
+    const [localShowXP, setLocalShowXP] = useState(false);
+    const [localXPPoints, setLocalXPPoints] = useState(5);
+
+    // État de connexion
+    const [isOnline, setIsOnline] = useState(navigator.onLine);
+
+    // État des statistiques globales
+    const [globalStats, setGlobalStats] = useState(null);
+
+    // On gère l'état des filtres directement dans App.js
+    const [selectedCategory, setSelectedCategory] = useState('all');
+    const [selectedTags, setSelectedTags] = useState([]);
+
+    // On calcule la liste des articles filtrés (`filteredNews`) ici.
+    // `useMemo` évite de refaire le calcul si les données n'ont pas changé.
+    const filteredNews = useMemo(() => {
+        // Sécurité : Si `news` n'est pas encore chargé, on retourne un tableau vide pour éviter le crash.
+        if (!news) return [];
+
+        return news.filter(article => {
+            const categoryMatch = selectedCategory === 'all' || article.category === selectedCategory;
+            const tagsMatch = selectedTags.length === 0 || selectedTags.some(tag => article.tags.includes(tag));
+            return categoryMatch && tagsMatch;
+        });
+    }, [news, selectedCategory, selectedTags]);
+
+    // On calcule la liste de tous les tags disponibles à partir des articles bruts.
+    const allTags = useMemo(() => {
+        if (!news) return [];
+        const tagsSet = new Set();
+        news.forEach(article => {
+            if (article.tags) {
+                article.tags.forEach(tag => tagsSet.add(tag));
             }
-
-            if (filters.orientation) {
-                query = query.eq('orientation', filters.orientation);
-            }
-
-            if (filters.tags && filters.tags.length > 0) {
-                query = query.contains('tags', filters.tags);
-            }
-
-            // Limiter les résultats
-            query = query.limit(filters.limit);
-
-            // Exécuter la requête
-            const { data, error: fetchError } = await query;
-
-            if (fetchError) {
-                throw fetchError;
-            }
-
-            // Transformer et définir les articles
-            const transformedData = (data || []).map(transformArticle);
-            setNews(transformedData);
-
-            // Sauvegarder le timestamp du dernier fetch
-            lastFetchTime.current = new Date();
-
-            console.log(`✅ ${transformedData.length} articles chargés initialement`);
-
-        } catch (err) {
-            console.error('❌ Erreur chargement initial:', err);
-            setError(err.message);
-        } finally {
-            setLoading(false);
-        }
-    }, [filters]);
-
-    // Fonction pour récupérer seulement les nouveaux articles
-    const fetchNewArticles = useCallback(async () => {
-        try {
-            if (!lastFetchTime.current) return;
-
-            const since = lastFetchTime.current.toISOString();
-            console.log('🔄 Recherche de nouveaux articles depuis:', lastFetchTime.current.toLocaleString());
-
-            // Requête pour les nouveaux articles seulement
-            let query = supabase
-                .from('articles')
-                .select('*')
-                .gt('published_at', since)
-                .order('published_at', { ascending: false });
-
-            // Appliquer les mêmes filtres
-            if (filters.category && filters.category !== 'all') {
-                const categoryTags = {
-                    'politics': ['politique'],
-                    'economy': ['économie', 'finance'],
-                    'society': ['société', 'social'],
-                    'international': ['international', 'monde'],
-                    'culture': ['culture'],
-                    'tech': ['tech', 'technologie', 'sciences'],
-                    'sport': ['sport']
-                };
-
-                const tags = categoryTags[filters.category];
-                if (tags) {
-                    query = query.contains('tags', tags);
-                }
-            }
-
-            if (filters.orientation) {
-                query = query.eq('orientation', filters.orientation);
-            }
-
-            if (filters.tags && filters.tags.length > 0) {
-                query = query.contains('tags', filters.tags);
-            }
-
-            const { data, error: fetchError } = await query;
-
-            if (fetchError) {
-                console.error('❌ Erreur récupération nouveaux articles:', fetchError);
-                return;
-            }
-
-            if (data && data.length > 0) {
-                console.log(`📰 ${data.length} nouveaux articles trouvés`);
-
-                // Transformer les nouveaux articles
-                const newArticles = data.map(transformArticle);
-
-                // Ajouter les nouveaux articles au début, en évitant les doublons
-                setNews(prevNews => {
-                    const existingIds = new Set(prevNews.map(article => article.id));
-                    const uniqueNewArticles = newArticles.filter(article => !existingIds.has(article.id));
-
-                    // Limiter le nombre total d'articles pour éviter la surcharge mémoire
-                    const combined = [...uniqueNewArticles, ...prevNews];
-                    const limited = combined.slice(0, 1000); // Garder max 1000 articles
-
-                    return limited;
-                });
-            }
-
-            // Mettre à jour le timestamp
-            lastFetchTime.current = new Date();
-
-        } catch (err) {
-            console.error('❌ Erreur fetch nouveaux articles:', err);
-        }
-    }, [filters]);
-
-    // Charger les articles initiaux au montage
-    useEffect(() => {
-        loadInitialArticles();
-    }, [loadInitialArticles]);
-
-    // Configurer l'intervalle de mise à jour (30 minutes)
-    useEffect(() => {
-        // Nettoyer l'ancien intervalle
-        if (fetchInterval.current) {
-            clearInterval(fetchInterval.current);
-        }
-
-        // Créer un nouvel intervalle de 30 minutes
-        fetchInterval.current = setInterval(() => {
-            console.log('⏰ Mise à jour automatique des articles...');
-            fetchNewArticles();
-        }, 30 * 60 * 1000); // 30 minutes
-
-        // Nettoyer à la destruction
-        return () => {
-            if (fetchInterval.current) {
-                clearInterval(fetchInterval.current);
-            }
-        };
-    }, [fetchNewArticles]);
-
-    // S'abonner aux changements en temps réel
-    useEffect(() => {
-        // Créer un canal pour les insertions en temps réel
-        const channel = supabase
-            .channel('realtime-articles')
-            .on(
-                'postgres_changes',
-                {
-                    event: 'INSERT',
-                    schema: 'public',
-                    table: 'articles'
-                },
-                (payload) => {
-                    console.log('🆕 Article en temps réel:', payload.new.title);
-
-                    // Transformer et ajouter l'article
-                    const newArticle = transformArticle(payload.new);
-
-                    // Vérifier si l'article correspond aux filtres actuels
-                    let shouldAdd = true;
-
-                    if (filters.category && filters.category !== 'all') {
-                        shouldAdd = newArticle.category === filters.category;
-                    }
-
-                    if (shouldAdd && filters.orientation) {
-                        shouldAdd = newArticle.orientation === filters.orientation;
-                    }
-
-                    if (shouldAdd && filters.tags && filters.tags.length > 0) {
-                        shouldAdd = filters.tags.some(tag => newArticle.tags.includes(tag));
-                    }
-
-                    if (shouldAdd) {
-                        setNews(prev => {
-                            // Éviter les doublons
-                            if (prev.some(article => article.id === newArticle.id)) {
-                                return prev;
-                            }
-
-                            // Ajouter au début et limiter
-                            const updated = [newArticle, ...prev];
-                            return updated.slice(0, 1000);
-                        });
-                    }
-                }
-            )
-            .subscribe();
-
-        // Nettoyer l'abonnement
-        return () => {
-            supabase.removeChannel(channel);
-        };
-    }, [filters]);
-
-    // Fonction pour rafraîchir manuellement
-    const refresh = useCallback(async () => {
-        console.log('🔄 Rafraîchissement manuel...');
-        await loadInitialArticles();
-    }, [loadInitialArticles]);
-
-    // Fonction pour mettre à jour les filtres
-    const updateFilters = useCallback((newFilters) => {
-        setFilters(prev => ({ ...prev, ...newFilters }));
-    }, []);
-
-    // Fonction pour marquer un article comme lu
-    const markAsRead = useCallback((articleId) => {
-        setNews(prev =>
-            prev.map(item =>
-                item.id === articleId
-                    ? { ...item, isRead: true }
-                    : item
-            )
-        );
-    }, []);
-
-    // Fonction pour obtenir les statistiques
-    const getStats = useCallback(() => {
-        const total = news.length;
-        const byOrientation = news.reduce((acc, item) => {
-            acc[item.orientation] = (acc[item.orientation] || 0) + 1;
-            return acc;
-        }, {});
-
-        const byCategory = news.reduce((acc, item) => {
-            acc[item.category] = (acc[item.category] || 0) + 1;
-            return acc;
-        }, {});
-
-        const bySource = news.reduce((acc, item) => {
-            acc[item.source] = (acc[item.source] || 0) + 1;
-            return acc;
-        }, {});
-
-        const last24h = news.filter(item => {
-            const articleTime = new Date(item.publishedAt).getTime();
-            const dayAgo = Date.now() - (24 * 60 * 60 * 1000);
-            return articleTime > dayAgo;
-        }).length;
-
-        return {
-            total,
-            last24h,
-            byOrientation,
-            byCategory,
-            bySource
-        };
+        });
+        return Array.from(tagsSet).sort();
     }, [news]);
 
-    return {
-        news,
-        loading,
-        error,
-        filters,
-        updateFilters,
-        refresh,
-        markAsRead,
-        getStats,
-        lastUpdate: lastFetchTime.current
+    // Fonctions pour manipuler les filtres
+    const toggleTag = (tag) => {
+        setSelectedTags(prev =>
+            prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
+        );
     };
+    const clearTags = () => setSelectedTags([]);
+
+    // Vérifier la connexion internet
+    useEffect(() => {
+        const handleOnline = () => setIsOnline(true);
+        const handleOffline = () => setIsOnline(false);
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+        return () => {
+            window.removeEventListener('online', handleOnline);
+            window.removeEventListener('offline', handleOffline);
+        };
+    }, []);
+
+    // Charger les stats globales
+    useEffect(() => {
+        if (getStats) {
+            const loadStats = async () => {
+                const stats = await getStats();
+                setGlobalStats(stats);
+            };
+            loadStats();
+            const interval = setInterval(loadStats, 5 * 60 * 1000);
+            return () => clearInterval(interval);
+        }
+    }, [getStats]);
+
+    // Gestionnaire de lecture d'article
+    const handleRead = useCallback(async (newsId) => {
+        const article = filteredNews.find(n => n.id === newsId);
+        if (article) {
+            await markAsRead(newsId);
+            handleReadNews(article);
+        }
+    }, [filteredNews, handleReadNews, markAsRead]);
+
+    // Gestionnaire de rafraîchissement
+    const handleRefresh = useCallback(() => {
+        if (isOnline && forceRefresh) {
+            forceRefresh();
+        }
+    }, [isOnline, forceRefresh]);
+
+    // Fonctions de remplacement pour les opérations admin (évite les crashs)
+    const addNews = () => alert("Fonctionnalité d'ajout non implémentée.");
+    const updateNews = () => alert("Fonctionnalité de mise à jour non implémentée.");
+    const deleteNews = () => alert("Fonctionnalité de suppression non implémentée.");
+    const formatDate = (date) => new Date(date).toLocaleDateString('fr-FR');
+
+    return (
+        <div className={`min-h-screen ${darkMode ? 'bg-slate-950 text-white' : 'bg-gray-50 text-gray-900'} transition-colors`}>
+            {!isOnline && (
+                <div className="bg-yellow-500 text-white text-center py-2 flex items-center justify-center gap-2">
+                    <WifiOff className="w-4 h-4" /> <span className="text-sm font-medium">Mode hors ligne</span>
+                </div>
+            )}
+
+            <Header userStats={userStats} globalStats={globalStats} onMenuClick={() => setMenuOpen(true)} />
+            <InfoTicker />
+            <MobileMenu
+                isOpen={menuOpen}
+                onClose={() => setMenuOpen(false)}
+                darkMode={darkMode}
+                isAdmin={isAdmin}
+                onShow360={() => setShow360(true)}
+                onShowAdmin={() => setShowAdmin(true)}
+                onShowReferral={() => setShowReferral(true)}
+                onShowBadgeShop={() => setShowBadgeShop(true)}
+                onShowAbout={() => setShowAbout(true)}
+            />
+
+            <main className="container mx-auto px-4 py-6 pb-20 max-w-7xl">
+                <DiversityScore
+                    darkMode={darkMode}
+                    score={userStats.diversityScore}
+                    articlesRead={userStats.readCount}
+                    orientationCounts={userStats.orientationCounts || {}}
+                />
+
+                {globalStats && (
+                    <div className={`grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                        <div className={`p-4 rounded-lg text-center ${darkMode ? 'bg-slate-800' : 'bg-white shadow-sm'}`}>
+                            <div className="text-2xl font-bold text-blue-500">{news?.length || 0}</div>
+                            <div className="text-sm">Articles affichés</div>
+                        </div>
+                        <div className={`p-4 rounded-lg text-center ${darkMode ? 'bg-slate-800' : 'bg-white shadow-sm'}`}>
+                            <div className="text-2xl font-bold text-orange-500">{userStats.readCount}</div>
+                            <div className="text-sm">Articles lus</div>
+                        </div>
+                        {/* Vous pouvez ajouter d'autres tuiles de stats ici */}
+                    </div>
+                )}
+
+                <NewsFilters
+                    darkMode={darkMode}
+                    selectedCategory={selectedCategory}
+                    setSelectedCategory={setSelectedCategory}
+                    selectedTags={selectedTags}
+                    toggleTag={toggleTag}
+                    allTags={allTags}
+                    clearTags={clearTags}
+                    articleCount={filteredNews.length}
+                />
+
+                <NewsList
+                    news={filteredNews}
+                    onRead={handleRead}
+                    darkMode={darkMode}
+                    isLoading={isLoading}
+                    error={error}
+                    onRefresh={handleRefresh}
+                />
+            </main>
+
+            <button onClick={handleRefresh} disabled={isLoading || !isOnline} className={`md:hidden fixed bottom-24 right-4 z-40 w-14 h-14 rounded-full shadow-lg flex items-center justify-center transition-all duration-200 transform ${darkMode ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-500 hover:bg-blue-600'} ${isLoading ? 'scale-95 opacity-75' : 'hover:scale-105'} ${!isOnline ? 'opacity-50 cursor-not-allowed' : ''}`} title={isOnline ? "Actualiser les articles" : "Hors ligne"}>
+                {isOnline ? <RefreshCw className={`w-6 h-6 text-white ${isLoading ? 'animate-spin' : ''}`} /> : <WifiOff className="w-6 h-6 text-white" />}
+            </button>
+
+            <XPAnimation show={showXPAnimation} points={xpAnimationPoints} />
+            <GradeUpAnimation show={gradeUpAnimation} oldGrade={userStats.gradeTitle} newGrade={grades[userStats.grade - 1]?.title} newLevel={userStats.grade} />
+            <ProgressBar userStats={userStats} grades={grades} />
+            <Footer />
+            {showAdmin && <AdminPanel darkMode={darkMode} news={filteredNews} onClose={() => setShowAdmin(false)} onAddNews={addNews} onUpdateNews={updateNews} onDeleteNews={deleteNews} formatDate={formatDate} />}
+            {showReferral && <ReferralModal darkMode={darkMode} userStats={userStats} onClose={() => setShowReferral(false)} />}
+            {showBadgeShop && <RewardsCenter darkMode={darkMode} userStats={userStats} onClose={() => setShowBadgeShop(false)} onPurchase={purchaseBadge} />}
+            {show360 && <Infodrop360 darkMode={darkMode} onClose={() => setShow360(false)} userStats={userStats} />}
+            {showAbout && <AboutPage darkMode={darkMode} onClose={() => setShowAbout(false)} />}
+
+            {error && !isLoading && (
+                <div className="fixed bottom-4 left-4 right-4 md:left-auto md:right-4 md:w-96 z-50">
+                    <div className={`p-4 rounded-lg shadow-lg border ${darkMode ? 'bg-red-900/90 border-red-700 text-red-100' : 'bg-red-50 border-red-200 text-red-800'}`}>
+                        <div className="flex items-start gap-3">
+                            <span className="text-lg">⚠️</span>
+                            <div className="flex-1">
+                                <p className="font-medium">Erreur de chargement</p>
+                                <p className="text-sm mt-1 opacity-90">{error}</p>
+                            </div>
+                            <button onClick={handleRefresh} className="text-sm underline hover:no-underline">Réessayer</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
 };
 
-// CHANGEMENT 2 : La ligne "export default" est supprimée d'ici.
+// Composant racine avec les providers
+const App = () => {
+    return (
+        <AuthProvider>
+            <ThemeProvider>
+                <GameProvider>
+                    <InfodropApp />
+                    <Analytics />
+                    <SpeedInsights />
+                </GameProvider>
+            </ThemeProvider>
+        </AuthProvider>
+    );
+};
+
+export default App;
