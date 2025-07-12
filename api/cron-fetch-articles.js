@@ -9,20 +9,16 @@ const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
 const supabaseServiceKey = process.env.REACT_APP_SUPABASE_SERVICE_KEY;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-const parser = new RssParser();
+const parser = new RssParser({ timeout: 8000 }); // On ajoute un timeout de 8s par flux
 
 // Fonction pour traiter un seul flux, qu'on appellera en parallèle
 const fetchFeed = async (source) => {
-    if (!source.url) {
-        console.warn(`Source "${source.name}" ignorée : URL manquante.`);
-        return []; // Retourne un tableau vide si pas d'URL
-    }
+    if (!source.url) return [];
     try {
         const feed = await parser.parseURL(source.url);
-        const articlesFromSource = [];
-        for (const item of feed.items) {
+        return (feed.items || []).map(item => {
             if (item.title && item.link && item.pubDate && item.guid) {
-                articlesFromSource.push({
+                return {
                     title: item.title,
                     link: item.link,
                     pubDate: new Date(item.pubDate),
@@ -32,13 +28,16 @@ const fetchFeed = async (source) => {
                     orientation: source.orientation || 'neutre',
                     category: source.category || 'généraliste',
                     tags: source.category ? [source.category] : [],
-                });
+                };
             }
-        }
-        return articlesFromSource;
+            return null;
+        }).filter(Boolean); // Retire les articles nuls
     } catch (error) {
-        console.error(`Erreur lors du traitement pour ${source.name}:`, error.message);
-        return []; // En cas d'erreur sur un flux, on retourne un tableau vide pour ne pas bloquer les autres
+        // On ne logue l'erreur que si ce n'est pas un simple timeout, pour ne pas polluer les logs
+        if (!error.message.includes('timeout')) {
+            console.error(`Erreur pour ${source.name}:`, error.message);
+        }
+        return []; // En cas d'erreur, on continue avec les autres
     }
 };
 
@@ -49,19 +48,19 @@ export default async function handler(req, res) {
 
     console.log('Cron job PARALLÈLE démarré.');
 
-    // On lance toutes les promesses de fetch en même temps
-    const allPromises = newsSources.map(source => fetchFeed(source));
+    // On lance toutes les requêtes en même temps
+    const allPromises = newsSources.map(fetchFeed);
 
-    // Promise.allSettled attend que toutes les promesses soient terminées (réussies ou échouées)
+    // On attend que toutes soient terminées
     const results = await Promise.allSettled(allPromises);
 
-    // On rassemble tous les articles de tous les flux dans un seul tableau
+    // On rassemble tous les articles dans un seul grand tableau
     const allArticlesToInsert = results
         .filter(result => result.status === 'fulfilled' && result.value)
         .flatMap(result => result.value);
 
     if (allArticlesToInsert.length === 0) {
-        console.log('Aucun nouvel article trouvé à insérer.');
+        console.log('Aucun nouvel article trouvé.');
         return res.status(200).json({ message: 'Aucun nouvel article trouvé.' });
     }
 

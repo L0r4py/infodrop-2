@@ -1,4 +1,4 @@
-// src/App.js
+// src/App.js - MODIFICATIONS MINIMALES
 
 import React, { useState, useEffect, useCallback } from 'react';
 import './App.css';
@@ -47,6 +47,25 @@ import { grades } from './data/rewards';
 
 // Icônes
 import { RefreshCw, Wifi, WifiOff } from 'lucide-react';
+
+// 🆕 FONCTION DE NETTOYAGE DES DONNÉES
+const cleanOrientationCounts = (counts) => {
+  if (!counts || typeof counts !== 'object') return {};
+
+  const cleaned = {};
+  Object.entries(counts).forEach(([key, value]) => {
+    // S'assurer que la clé est une string valide
+    const cleanKey = String(key || 'neutre').trim();
+    // S'assurer que la valeur est un nombre
+    const cleanValue = parseInt(value) || 0;
+
+    if (cleanKey && cleanValue > 0) {
+      cleaned[cleanKey] = cleanValue;
+    }
+  });
+
+  return cleaned;
+};
 
 // Composant principal de l'application
 const InfodropApp = () => {
@@ -116,8 +135,12 @@ const InfodropApp = () => {
   // Charger les stats globales
   useEffect(() => {
     const loadStats = async () => {
-      const stats = await getStats();
-      setGlobalStats(stats);
+      try {
+        const stats = await getStats();
+        setGlobalStats(stats);
+      } catch (error) {
+        console.error('Erreur chargement stats:', error);
+      }
     };
 
     loadStats();
@@ -220,23 +243,23 @@ const InfodropApp = () => {
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-6 pb-20 max-w-7xl">
-        {/* Score de Diversité */}
+        {/* Score de Diversité - AVEC NETTOYAGE DES DONNÉES */}
         <DiversityScore
           darkMode={darkMode}
-          score={userStats.diversityScore}
-          articlesRead={userStats.readCount}
-          orientationCounts={userStats.orientationCounts || {}}
+          score={userStats.diversityScore || 0}
+          articlesRead={userStats.readCount || 0}
+          orientationCounts={cleanOrientationCounts(userStats.orientationCounts)}
         />
 
         {/* Statistiques rapides */}
         {globalStats && (
           <div className={`grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
             <div className={`p-4 rounded-lg text-center ${darkMode ? 'bg-slate-800' : 'bg-white shadow-sm'}`}>
-              <div className="text-2xl font-bold text-blue-500">{globalStats.total_articles}</div>
+              <div className="text-2xl font-bold text-blue-500">{globalStats.total_articles || 0}</div>
               <div className="text-sm">Articles aujourd'hui</div>
             </div>
             <div className={`p-4 rounded-lg text-center ${darkMode ? 'bg-slate-800' : 'bg-white shadow-sm'}`}>
-              <div className="text-2xl font-bold text-emerald-500">{globalStats.active_sources}</div>
+              <div className="text-2xl font-bold text-emerald-500">{globalStats.active_sources || 0}</div>
               <div className="text-sm">Sources actives</div>
             </div>
             <div className={`p-4 rounded-lg text-center ${darkMode ? 'bg-slate-800' : 'bg-white shadow-sm'}`}>
@@ -244,7 +267,7 @@ const InfodropApp = () => {
               <div className="text-sm">Articles affichés</div>
             </div>
             <div className={`p-4 rounded-lg text-center ${darkMode ? 'bg-slate-800' : 'bg-white shadow-sm'}`}>
-              <div className="text-2xl font-bold text-orange-500">{userStats.readCount}</div>
+              <div className="text-2xl font-bold text-orange-500">{userStats.readCount || 0}</div>
               <div className="text-sm">Articles lus</div>
             </div>
           </div>
