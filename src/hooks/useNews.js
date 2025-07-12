@@ -1,4 +1,5 @@
 // src/hooks/useNews.js
+// Version Corrigée : Conserve toute la logique avancée, mais pointe vers les bonnes colonnes de la BDD.
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { db, isSupabaseConfigured } from '../lib/supabase';
@@ -52,16 +53,20 @@ export const useNews = () => {
             id: article.id,
             title: article.title,
             source: article.source_name,
-            url: article.url,
+            // ✅ CORRECTION : La BDD contient 'link', pas 'url'.
+            url: article.link,
             orientation: article.orientation || 'neutre',
             category: category,
             tags: article.tags || [],
-            timestamp: new Date(article.published_at).getTime(),
+            // ✅ CORRECTION : La BDD contient 'pubDate', pas 'published_at'.
+            timestamp: new Date(article.pubDate).getTime(),
             views: article.views || 0,
             clicks: article.clicks || 0,
-            summary: article.summary,
+            // ✅ CORRECTION : La BDD n'a pas de colonne 'summary'. On utilise le titre comme fallback.
+            summary: article.title || '',
             imageUrl: article.image_url,
-            publishedAt: article.published_at // 🔥 Garder la date originale
+            // ✅ CORRECTION : On garde la date originale depuis 'pubDate'.
+            publishedAt: article.pubDate
         };
     };
 
@@ -90,9 +95,16 @@ export const useNews = () => {
                 // Chercher seulement les nouveaux articles
                 console.log('🔍 Recherche de nouveaux articles depuis:', lastTimestampRef.current);
 
-                const result = await db.articles.getNewArticles(lastTimestampRef.current);
-                data = result.data;
-                supabaseError = result.error;
+                // ✅ CORRECTION : Requête directe avec les bons noms de colonnes
+                const { data: newData, error: newError } = await db
+                    .from('articles')
+                    .select('id, title, link, source_name, image_url, pubDate, orientation, tags, views, clicks')
+                    .gt('pubDate', lastTimestampRef.current)
+                    .order('pubDate', { ascending: false })
+                    .limit(50);
+
+                data = newData;
+                supabaseError = newError;
 
                 if (!supabaseError && data && data.length > 0) {
                     console.log(`📰 ${data.length} nouveaux articles trouvés`);
@@ -113,22 +125,21 @@ export const useNews = () => {
                     });
 
                     // Mettre à jour le timestamp
-                    lastTimestampRef.current = data[0].published_at;
+                    lastTimestampRef.current = data[0].pubDate;
                 }
             } else {
                 // Premier chargement ou refresh forcé
                 console.log('📥 Chargement initial des articles');
 
-                // ✅ CORRECTION : Ajouter l'ordre par date décroissante
-                const result = await db.articles.getAll({
-                    limit: 200,
-                    orderBy: {
-                        column: 'published_at',
-                        ascending: false
-                    }
-                });
-                data = result.data;
-                supabaseError = result.error;
+                // ✅ CORRECTION : Requête avec les bons noms de colonnes
+                const { data: initialData, error: initialError } = await db
+                    .from('articles')
+                    .select('id, title, link, source_name, image_url, pubDate, orientation, tags, views, clicks')
+                    .order('pubDate', { ascending: false })
+                    .limit(200);
+
+                data = initialData;
+                supabaseError = initialError;
 
                 if (supabaseError) throw supabaseError;
 
@@ -142,7 +153,7 @@ export const useNews = () => {
 
                 // Garder le timestamp du plus récent
                 if (data && data.length > 0) {
-                    lastTimestampRef.current = data[0].published_at;
+                    lastTimestampRef.current = data[0].pubDate;
                 }
 
                 console.log(`✅ ${convertedNews.length} articles chargés`);
@@ -182,7 +193,7 @@ export const useNews = () => {
 
             return () => clearInterval(interval);
         }
-    }, []); // Dépendances vides pour ne s'exécuter qu'une fois
+    }, [loadNews]);
 
     // Ajouter une actualité (pour l'admin)
     const addNews = useCallback(async (newArticle) => {
@@ -199,19 +210,24 @@ export const useNews = () => {
         }
 
         try {
+            // ✅ CORRECTION : Utiliser les bons noms de colonnes pour l'insertion
             const supabaseArticle = {
                 title: newArticle.title,
-                url: newArticle.url || `#${Date.now()}`,
+                link: newArticle.url || `#${Date.now()}`, // ✅ 'link' au lieu de 'url'
                 source_name: newArticle.source || 'Admin',
                 orientation: newArticle.orientation || 'neutre',
                 tags: newArticle.tags || [],
-                published_at: new Date().toISOString(),
-                summary: newArticle.summary || newArticle.title,
+                pubDate: new Date().toISOString(), // ✅ 'pubDate' au lieu de 'published_at'
                 views: 0,
                 clicks: 0
+                // Pas de 'summary' dans la BDD
             };
 
-            const { data, error } = await db.articles.create(supabaseArticle);
+            const { data, error } = await db
+                .from('articles')
+                .insert([supabaseArticle])
+                .select()
+                .single();
 
             if (error) throw error;
 
@@ -245,6 +261,7 @@ export const useNews = () => {
         }
 
         try {
+            // ✅ CORRECTION : Mapper vers les bons noms de colonnes
             const supabaseUpdates = {};
 
             if (updates.title) supabaseUpdates.title = updates.title;
@@ -253,9 +270,13 @@ export const useNews = () => {
                 supabaseUpdates.orientation = updates.orientation;
             }
             if (updates.tags) supabaseUpdates.tags = updates.tags;
-            if (updates.summary) supabaseUpdates.summary = updates.summary;
+            if (updates.url) supabaseUpdates.link = updates.url; // ✅ 'link' au lieu de 'url'
+            // Pas de 'summary' dans la BDD
 
-            const { error } = await db.articles.update(id, supabaseUpdates);
+            const { error } = await db
+                .from('articles')
+                .update(supabaseUpdates)
+                .eq('id', id);
 
             if (error) throw error;
 
@@ -281,7 +302,10 @@ export const useNews = () => {
         }
 
         try {
-            const { error } = await db.articles.delete(id);
+            const { error } = await db
+                .from('articles')
+                .delete()
+                .eq('id', id);
 
             if (error) throw error;
 
@@ -310,9 +334,10 @@ export const useNews = () => {
             try {
                 const article = news.find(n => n.id === id);
                 if (article) {
-                    await db.articles.update(id, {
-                        views: (article.views || 0) + 1
-                    });
+                    await db
+                        .from('articles')
+                        .update({ views: (article.views || 0) + 1 })
+                        .eq('id', id);
                 }
             } catch (err) {
                 console.error('Erreur incrémentation vues:', err);
@@ -382,8 +407,26 @@ export const useNews = () => {
         }
 
         try {
-            const stats = await db.articles.getStats();
-            return stats;
+            // ✅ CORRECTION : Requête directe pour les stats
+            const { data: articlesData, error: articlesError } = await db
+                .from('articles')
+                .select('id', { count: 'exact' });
+
+            const { data: sourcesData, error: sourcesError } = await db
+                .from('articles')
+                .select('source_name')
+                .limit(1000);
+
+            if (articlesError || sourcesError) {
+                throw articlesError || sourcesError;
+            }
+
+            const uniqueSources = new Set(sourcesData.map(item => item.source_name));
+
+            return {
+                total_articles: articlesData?.length || news.length,
+                active_sources: uniqueSources.size
+            };
         } catch (err) {
             console.error('Erreur stats:', err);
             return {
