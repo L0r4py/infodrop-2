@@ -1,146 +1,196 @@
-// ========================================================================
-// Fichier COMPLET et AMÉLIORÉ : src/contexts/GameContext.js
-// Logique de mise à jour des statistiques ajoutée.
-// ========================================================================
+// src/contexts/GameContext.js
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { useAuth } from './AuthContext';
-import { supabase } from '../lib/supabase';
-import { grades } from '../data/rewards';
+import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
 
-const GameContext = createContext();
+// Créer le contexte
+const GameContext = createContext(null);
 
-const initialStats = {
-    xp: 0,
-    level: 1,
-    grade: 1,
-    gradeTitle: 'Débutant',
-    readCount: 0,
-    diversityScore: 0,
-    badges: [],
-    orientationCounts: {},
-};
-
-export const GameProvider = ({ children }) => {
-    const { user } = useAuth();
-    const [userStats, setUserStats] = useState(initialStats);
-    const [loading, setLoading] = useState(true);
-
-    const [showXPAnimation, setShowXPAnimation] = useState(false);
-    const [xpAnimationPoints, setXpAnimationPoints] = useState(0);
-    const [gradeUpAnimation, setGradeUpAnimation] = useState(false);
-
-    const fetchUserStats = useCallback(async (userId) => {
-        if (!userId) {
-            setUserStats(initialStats);
-            setLoading(false);
-            return;
-        }
-
-        setLoading(true);
-        try {
-            const { data, error } = await supabase
-                .from('profiles')
-                .select('xp, level, grade, read_count, diversity_score, badges, orientation_counts')
-                .eq('id', userId)
-                .single();
-
-            if (error && error.code !== 'PGRST116') { // Ignore "no rows found" error
-                throw error;
-            }
-
-            if (data) {
-                setUserStats({
-                    xp: data.xp || 0,
-                    level: data.level || 1,
-                    grade: data.grade || 1,
-                    gradeTitle: grades[data.grade - 1]?.title || 'Débutant',
-                    readCount: data.read_count || 0,
-                    diversityScore: data.diversity_score || 0,
-                    badges: data.badges || [],
-                    orientationCounts: data.orientation_counts || {},
-                });
-            } else {
-                // Si aucun profil n'existe pour cet utilisateur, on initialise avec les valeurs par défaut
-                setUserStats(initialStats);
-            }
-        } catch (error) {
-            console.error("Erreur lors de la récupération des stats utilisateur:", error);
-            setUserStats(initialStats);
-        } finally {
-            setLoading(false);
-        }
-    }, []);
-
-    useEffect(() => {
-        fetchUserStats(user?.id);
-    }, [user, fetchUserStats]);
-
-    // **AMÉLIORATION MAJEURE ICI**
-    const handleReadNews = useCallback(async (article) => {
-        if (!user || !article) return; // Sécurité
-
-        const pointsGagnes = 5;
-
-        // 1. Mettre à jour l'état local pour une réactivité instantanée
-        setUserStats(prevStats => {
-            // Met à jour le compteur pour l'orientation de l'article lu
-            const newOrientationCounts = { ...prevStats.orientationCounts };
-            const orientation = article.orientation || 'neutre';
-            newOrientationCounts[orientation] = (newOrientationCounts[orientation] || 0) + 1;
-
-            // Met à jour le score de diversité
-            const uniqueOrientationsLues = Object.values(newOrientationCounts).filter(c => c > 0).length;
-            const newDiversityScore = Math.round((uniqueOrientationsLues / 7) * 100);
-
-            // Retourne le nouvel objet de statistiques
-            return {
-                ...prevStats,
-                readCount: prevStats.readCount + 1,
-                xp: prevStats.xp + pointsGagnes,
-                orientationCounts: newOrientationCounts,
-                diversityScore: newDiversityScore,
-            };
-        });
-
-        // 2. Déclencher l'animation
-        setXpAnimationPoints(pointsGagnes);
-        setShowXPAnimation(true);
-        setTimeout(() => setShowXPAnimation(false), 3000);
-
-        // 3. Mettre à jour la base de données en arrière-plan
-        // On utilise les nouvelles valeurs calculées pour les envoyer à Supabase
-        const { data: updatedStats } = await supabase.rpc('update_user_stats_on_read', {
-            user_id: user.id,
-            xp_gain: pointsGagnes,
-            read_article_orientation: article.orientation || 'neutre'
-        });
-
-        console.log("Stats mises à jour dans la base de données.");
-
-    }, [user]); // Dépend de `user` pour connaître l'ID
-
-    const purchaseBadge = () => {
-        console.log("Logique d'achat de badge à implémenter");
-    };
-
-    const value = {
-        userStats,
-        loading,
-        handleReadNews,
-        purchaseBadge,
-        showXPAnimation,
-        xpAnimationPoints,
-        gradeUpAnimation,
-    };
-
-    return <GameContext.Provider value={value}>{children}</GameContext.Provider>;
-};
-
+// Hook personnalisé pour utiliser le contexte
 export const useGame = () => {
     const context = useContext(GameContext);
-    if (context === undefined) {
+    if (!context) {
         throw new Error('useGame doit être utilisé dans un GameProvider');
     }
     return context;
 };
+
+// Grades avec difficulté augmentée
+const grades = [
+    { level: 1, title: "Recrue", ipRequired: 0 },
+    { level: 2, title: "Analyste Junior", ipRequired: 200 },
+    { level: 3, title: "Analyste Confirmé", ipRequired: 500 },
+    { level: 4, title: "Analyste Senior", ipRequired: 1000 },
+    { level: 5, title: "Spécialiste du Renseignement", ipRequired: 2000 },
+    { level: 6, title: "Agent de Terrain", ipRequired: 3500 },
+    { level: 7, title: "Agent Spécial", ipRequired: 5500 },
+    { level: 8, title: "Chef de Section", ipRequired: 8000 },
+    { level: 9, title: "Directeur Adjoint", ipRequired: 12000 },
+    { level: 10, title: "Maître de l'Information", ipRequired: 20000 }
+];
+
+// Provider du contexte
+export const GameProvider = ({ children }) => {
+    // État de gamification avec persistence
+    const [userStats, setUserStats] = useState(() => {
+        const saved = localStorage.getItem('userStats');
+        if (saved) {
+            const parsed = JSON.parse(saved);
+            // S'assurer que orientationCounts existe pour les utilisateurs existants
+            if (!parsed.orientationCounts) {
+                parsed.orientationCounts = {};
+            }
+            return parsed;
+        }
+        return {
+            ip: 0,
+            grade: 1,
+            gradeTitle: 'Recrue',
+            streak: 0,
+            readCount: 0,
+            diversityScore: 41,
+            unlockedAccreditations: [],
+            unlockedSucces: [],
+            purchasedBadges: [],
+            readOrientations: [],
+            orientationCounts: {},
+            referralCode: 'NYO-BX89',
+            referredBy: '10r4.py@gmail.com',
+            referredMembers: 0
+        };
+    });
+
+    const [gradeUpAnimation, setGradeUpAnimation] = useState(false);
+    const [showXPAnimation, setShowXPAnimation] = useState(false);
+    const [xpAnimationPoints, setXPAnimationPoints] = useState(5);
+
+    // Sauvegarder les stats à chaque changement
+    useEffect(() => {
+        localStorage.setItem('userStats', JSON.stringify(userStats));
+    }, [userStats]);
+
+    // Fonction pour lire un article
+    const handleReadNews = useCallback((newsItem) => {
+        if (!newsItem) return;
+
+        setUserStats(prev => {
+            const newStats = {
+                ...prev,
+                ip: prev.ip + 5,
+                readCount: prev.readCount + 1,
+                readOrientations: [...new Set([...prev.readOrientations, newsItem.orientation])],
+                orientationCounts: {
+                    ...(prev.orientationCounts || {}),
+                    [newsItem.orientation]: ((prev.orientationCounts || {})[newsItem.orientation] || 0) + 1
+                }
+            };
+
+            // Calculer le nouveau score de diversité
+            const orientationsWithArticles = Object.keys(newStats.orientationCounts).filter(o => newStats.orientationCounts[o] > 0);
+            newStats.diversityScore = Math.min(100, Math.round((orientationsWithArticles.length / 7) * 100));
+
+            // Vérifier le grade
+            const nextGrade = grades.find(g => g.level === prev.grade + 1);
+
+            if (nextGrade && newStats.ip >= nextGrade.ipRequired) {
+                setGradeUpAnimation(true);
+                setTimeout(() => setGradeUpAnimation(false), 3000);
+                newStats.grade = nextGrade.level;
+                newStats.gradeTitle = nextGrade.title;
+            }
+
+            return newStats;
+        });
+
+        // Afficher l'animation XP
+        setXPAnimationPoints(5);
+        setShowXPAnimation(true);
+        setTimeout(() => setShowXPAnimation(false), 3000);
+    }, []);
+
+    // Fonction pour acheter un badge
+    const purchaseBadge = useCallback((badge) => {
+        if (userStats.ip >= badge.cost && !userStats.purchasedBadges.includes(badge.id)) {
+            setUserStats(prev => ({
+                ...prev,
+                ip: prev.ip - badge.cost,
+                purchasedBadges: [...prev.purchasedBadges, badge.id]
+            }));
+            return true;
+        }
+        return false;
+    }, [userStats.ip, userStats.purchasedBadges]);
+
+    // Fonction pour débloquer un succès
+    const unlockAchievement = useCallback((achievementId, points) => {
+        if (!userStats.unlockedSucces.includes(achievementId)) {
+            setUserStats(prev => ({
+                ...prev,
+                ip: prev.ip + points,
+                unlockedSucces: [...prev.unlockedSucces, achievementId]
+            }));
+        }
+    }, [userStats.unlockedSucces]);
+
+    // Fonction pour débloquer une accréditation
+    const unlockAccreditation = useCallback((accreditationId, points) => {
+        if (!userStats.unlockedAccreditations.includes(accreditationId)) {
+            setUserStats(prev => ({
+                ...prev,
+                ip: prev.ip + points,
+                unlockedAccreditations: [...prev.unlockedAccreditations, accreditationId]
+            }));
+        }
+    }, [userStats.unlockedAccreditations]);
+
+    // Fonction pour ajouter un filleul
+    const addReferral = useCallback(() => {
+        setUserStats(prev => ({
+            ...prev,
+            referredMembers: prev.referredMembers + 1,
+            ip: prev.ip + 200 // Bonus parrain
+        }));
+    }, []);
+
+    // Fonction pour mettre à jour le streak
+    const updateStreak = useCallback(() => {
+        const lastVisit = localStorage.getItem('lastVisit');
+        const today = new Date().toDateString();
+
+        if (lastVisit !== today) {
+            localStorage.setItem('lastVisit', today);
+            setUserStats(prev => ({
+                ...prev,
+                streak: prev.streak + 1
+            }));
+        }
+    }, []);
+
+    // Vérifier le streak au chargement
+    useEffect(() => {
+        updateStreak();
+    }, [updateStreak]);
+
+    const value = {
+        userStats,
+        grades,
+        gradeUpAnimation,
+        showXPAnimation,
+        xpAnimationPoints,
+        handleReadNews,
+        purchaseBadge,
+        unlockAchievement,
+        unlockAccreditation,
+        addReferral,
+        updateStreak,
+        setGradeUpAnimation,
+        setShowXPAnimation
+    };
+
+    return (
+        <GameContext.Provider value={value}>
+            {children}
+        </GameContext.Provider>
+    );
+};
+
+export default GameContext;
