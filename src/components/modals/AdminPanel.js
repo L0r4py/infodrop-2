@@ -1,173 +1,344 @@
 // src/components/modals/AdminPanel.js
+// Exemple d'utilisation des fonctions CRUD
 
 import React, { useState } from 'react';
-import { X, Plus, Edit, Trash2, UserPlus } from 'lucide-react';
+import { X } from 'lucide-react';
 
-// Panel Admin
 const AdminPanel = ({ darkMode, news, onClose, onAddNews, onUpdateNews, onDeleteNews }) => {
-    const [editingNews, setEditingNews] = useState(null);
-    const [newNews, setNewNews] = useState({
+    const [formData, setFormData] = useState({
         title: '',
         source: '',
-        category: 'tech',
-        orientation: 'center',
-        tags: [],
-        url: ''
+        url: '',
+        orientation: 'neutre',
+        category: 'généraliste',
+        tags: []
     });
+    const [editingId, setEditingId] = useState(null);
+    const [loading, setLoading] = useState(false);
+    const [message, setMessage] = useState('');
 
-    // Fermer au clic extérieur
-    const handleBackdropClick = (e) => {
-        if (e.target === e.currentTarget) {
-            onClose();
+    // Gérer l'ajout d'un article
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setMessage('');
+
+        try {
+            const result = await onAddNews({
+                ...formData,
+                tags: formData.tags.filter(tag => tag.trim() !== '')
+            });
+
+            if (result.success) {
+                setMessage('✅ Article ajouté avec succès !');
+                setFormData({
+                    title: '',
+                    source: '',
+                    url: '',
+                    orientation: 'neutre',
+                    category: 'généraliste',
+                    tags: []
+                });
+            } else {
+                setMessage(`❌ Erreur : ${result.error}`);
+            }
+        } catch (error) {
+            setMessage(`❌ Erreur : ${error.message}`);
+        } finally {
+            setLoading(false);
         }
     };
 
-    const handleAddNews = () => {
-        if (newNews.title) { 
-            onAddNews({
-                ...newNews,
-                id: Date.now(),
-                timestamp: Date.now(),
-                views: 0,
-                tags: newNews.tags.filter(t => t) 
-            });
-            setNewNews({ title: '', source: '', category: 'tech', orientation: 'center', tags: [], url: '' });
+    // Gérer la mise à jour
+    const handleUpdate = async (id) => {
+        setLoading(true);
+        setMessage('');
+
+        try {
+            const result = await onUpdateNews(id, formData);
+
+            if (result.success) {
+                setMessage('✅ Article mis à jour !');
+                setEditingId(null);
+                setFormData({
+                    title: '',
+                    source: '',
+                    url: '',
+                    orientation: 'neutre',
+                    category: 'généraliste',
+                    tags: []
+                });
+            } else {
+                setMessage(`❌ Erreur : ${result.error}`);
+            }
+        } catch (error) {
+            setMessage(`❌ Erreur : ${error.message}`);
+        } finally {
+            setLoading(false);
         }
+    };
+
+    // Gérer la suppression
+    const handleDelete = async (id) => {
+        if (!window.confirm('Êtes-vous sûr de vouloir supprimer cet article ?')) return;
+
+        setLoading(true);
+        setMessage('');
+
+        try {
+            const result = await onDeleteNews(id);
+
+            if (result.success) {
+                setMessage('✅ Article supprimé !');
+            } else {
+                setMessage(`❌ Erreur : ${result.error}`);
+            }
+        } catch (error) {
+            setMessage(`❌ Erreur : ${error.message}`);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Préparer l'édition
+    const startEdit = (article) => {
+        setEditingId(article.id);
+        setFormData({
+            title: article.title,
+            source: article.source,
+            url: article.url,
+            orientation: article.orientation,
+            category: article.category,
+            tags: article.tags || []
+        });
     };
 
     return (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={handleBackdropClick}>
-            <div className={`w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-xl ${darkMode ? 'bg-slate-900' : 'bg-white'
-                } shadow-2xl`}>
-                <div className="sticky top-0 bg-gradient-to-r from-purple-600 to-pink-600 text-white p-6 rounded-t-xl">
-                    <div className="flex items-center justify-between">
-                        <h2 className="text-2xl font-bold">Panel Admin</h2>
-                        <button onClick={onClose} className="p-2 hover:bg-white/20 rounded-lg transition-colors">
-                            <X className="w-6 h-6" />
-                        </button>
-                    </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+            <div className={`
+                w-full max-w-4xl max-h-[90vh] m-4 rounded-lg overflow-hidden
+                ${darkMode ? 'bg-slate-800' : 'bg-white'}
+            `}>
+                {/* Header */}
+                <div className={`
+                    flex items-center justify-between p-6 border-b
+                    ${darkMode ? 'border-slate-700' : 'border-gray-200'}
+                `}>
+                    <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                        Administration
+                    </h2>
+                    <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg">
+                        <X className="w-5 h-5" />
+                    </button>
                 </div>
 
-                <div className="p-6">
-                    <div className={`mb-8 p-6 rounded-xl ${darkMode ? 'bg-slate-800' : 'bg-gray-100'}`}>
-                        <h3 className="text-xl font-bold mb-4">Ajouter une actualité</h3>
-                        <div className="grid gap-4">
+                {/* Contenu */}
+                <div className="p-6 overflow-y-auto" style={{ maxHeight: 'calc(90vh - 80px)' }}>
+                    {/* Message */}
+                    {message && (
+                        <div className={`
+                            mb-4 p-3 rounded-lg text-sm
+                            ${message.includes('✅')
+                                ? 'bg-green-100 text-green-700'
+                                : 'bg-red-100 text-red-700'
+                            }
+                        `}>
+                            {message}
+                        </div>
+                    )}
+
+                    {/* Formulaire */}
+                    <form onSubmit={editingId ? (e) => {
+                        e.preventDefault();
+                        handleUpdate(editingId);
+                    } : handleSubmit} className="mb-6 space-y-4">
+                        <div>
+                            <label className={`block mb-1 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                Titre
+                            </label>
                             <input
                                 type="text"
-                                placeholder="Titre *"
-                                value={newNews.title}
-                                onChange={(e) => setNewNews({ ...newNews, title: e.target.value })}
-                                className={`w-full px-4 py-3 rounded-lg ${darkMode ? 'bg-slate-700 text-white' : 'bg-white'
-                                    } focus:ring-2 focus:ring-purple-500 outline-none`}
+                                value={formData.title}
+                                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                                className={`
+                                    w-full px-3 py-2 rounded-lg border
+                                    ${darkMode
+                                        ? 'bg-slate-700 border-slate-600 text-white'
+                                        : 'bg-white border-gray-300'
+                                    }
+                                `}
+                                required
                             />
-                            <div className="grid grid-cols-2 gap-4">
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className={`block mb-1 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                    Source
+                                </label>
                                 <input
                                     type="text"
-                                    placeholder="Source"
-                                    value={newNews.source}
-                                    onChange={(e) => setNewNews({ ...newNews, source: e.target.value })}
-                                    className={`w-full px-4 py-3 rounded-lg ${darkMode ? 'bg-slate-700 text-white' : 'bg-white'
-                                        }`}
+                                    value={formData.source}
+                                    onChange={(e) => setFormData({ ...formData, source: e.target.value })}
+                                    className={`
+                                        w-full px-3 py-2 rounded-lg border
+                                        ${darkMode
+                                            ? 'bg-slate-700 border-slate-600 text-white'
+                                            : 'bg-white border-gray-300'
+                                        }
+                                    `}
+                                    required
                                 />
+                            </div>
+
+                            <div>
+                                <label className={`block mb-1 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                    URL
+                                </label>
+                                <input
+                                    type="url"
+                                    value={formData.url}
+                                    onChange={(e) => setFormData({ ...formData, url: e.target.value })}
+                                    className={`
+                                        w-full px-3 py-2 rounded-lg border
+                                        ${darkMode
+                                            ? 'bg-slate-700 border-slate-600 text-white'
+                                            : 'bg-white border-gray-300'
+                                        }
+                                    `}
+                                    required
+                                />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className={`block mb-1 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                    Orientation
+                                </label>
                                 <select
-                                    value={newNews.category}
-                                    onChange={(e) => setNewNews({ ...newNews, category: e.target.value })}
-                                    className={`w-full px-4 py-3 rounded-lg ${darkMode ? 'bg-slate-700 text-white' : 'bg-white'
-                                        }`}
+                                    value={formData.orientation}
+                                    onChange={(e) => setFormData({ ...formData, orientation: e.target.value })}
+                                    className={`
+                                        w-full px-3 py-2 rounded-lg border
+                                        ${darkMode
+                                            ? 'bg-slate-700 border-slate-600 text-white'
+                                            : 'bg-white border-gray-300'
+                                        }
+                                    `}
                                 >
-                                    <option value="tech">Tech</option>
-                                    <option value="politique">Politique</option>
-                                    <option value="économie">Économie</option>
-                                    <option value="société">Société</option>
-                                    <option value="environnement">Environnement</option>
+                                    <option value="extreme-gauche">Extrême Gauche</option>
+                                    <option value="gauche">Gauche</option>
+                                    <option value="centre-gauche">Centre Gauche</option>
+                                    <option value="centre">Centre</option>
+                                    <option value="centre-droit">Centre Droit</option>
+                                    <option value="droite">Droite</option>
+                                    <option value="extreme-droite">Extrême Droite</option>
+                                    <option value="neutre">Neutre</option>
                                 </select>
                             </div>
 
-                            <input
-                                type="url"
-                                placeholder="URL de l'article"
-                                value={newNews.url}
-                                onChange={(e) => setNewNews({ ...newNews, url: e.target.value })}
-                                className={`w-full px-4 py-3 rounded-lg ${darkMode ? 'bg-slate-700 text-white' : 'bg-white'
-                                    }`}
-                            />
-                            <div className="grid grid-cols-2 gap-4">
-                                <button
-                                    onClick={handleAddNews}
-                                    className="bg-gradient-to-r from-purple-500 to-pink-500 text-white py-3 rounded-lg font-semibold hover:shadow-lg transform hover:scale-[1.02] transition-all"
-                                >
-                                    <Plus className="w-5 h-5 inline mr-2" />
-                                    Ajouter
-                                </button>
-                                <button
-                                    onClick={() => {
-                                        const code = `INF-${Math.random().toString(36).substr(2, 4).toUpperCase()}`;
-                                        alert(`Nouveau code de parrainage généré : ${code}`);
-                                    }}
-                                    className="bg-gradient-to-r from-emerald-500 to-teal-500 text-white py-3 rounded-lg font-semibold hover:shadow-lg transform hover:scale-[1.02] transition-all"
-                                >
-                                    <UserPlus className="w-5 h-5 inline mr-2" />
-                                    Générer Code
-                                </button>
+                            <div>
+                                <label className={`block mb-1 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                    Catégorie
+                                </label>
+                                <input
+                                    type="text"
+                                    value={formData.category}
+                                    onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                                    className={`
+                                        w-full px-3 py-2 rounded-lg border
+                                        ${darkMode
+                                            ? 'bg-slate-700 border-slate-600 text-white'
+                                            : 'bg-white border-gray-300'
+                                        }
+                                    `}
+                                />
                             </div>
                         </div>
-                    </div>
 
-                    <div className="space-y-4">
-                        <h3 className="text-xl font-bold mb-4">Actualités existantes</h3>
-                        {news.map(item => (
-                            <div key={item.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-800' : 'bg-gray-100'}`}>
-                                {editingNews?.id === item.id ? (
-                                    <div className="grid gap-3">
-                                        <input
-                                            type="text"
-                                            value={editingNews.title}
-                                            onChange={(e) => setEditingNews({ ...editingNews, title: e.target.value })}
-                                            className={`w-full px-3 py-2 rounded-lg ${darkMode ? 'bg-slate-700 text-white' : 'bg-white'
-                                                }`}
-                                        />
-                                        <div className="flex gap-2">
+                        <div className="flex gap-2">
+                            <button
+                                type="submit"
+                                disabled={loading}
+                                className={`
+                                    px-4 py-2 rounded-lg font-medium
+                                    ${loading
+                                        ? 'bg-gray-400 cursor-not-allowed'
+                                        : 'bg-blue-500 hover:bg-blue-600 text-white'
+                                    }
+                                `}
+                            >
+                                {loading ? 'Chargement...' : (editingId ? 'Mettre à jour' : 'Ajouter')}
+                            </button>
+
+                            {editingId && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setEditingId(null);
+                                        setFormData({
+                                            title: '',
+                                            source: '',
+                                            url: '',
+                                            orientation: 'neutre',
+                                            category: 'généraliste',
+                                            tags: []
+                                        });
+                                    }}
+                                    className="px-4 py-2 rounded-lg bg-gray-300 hover:bg-gray-400"
+                                >
+                                    Annuler
+                                </button>
+                            )}
+                        </div>
+                    </form>
+
+                    {/* Liste des articles récents */}
+                    <div>
+                        <h3 className={`text-lg font-semibold mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                            Articles récents
+                        </h3>
+
+                        <div className="space-y-2">
+                            {news.slice(0, 10).map(article => (
+                                <div
+                                    key={article.id}
+                                    className={`
+                                        p-3 rounded-lg border
+                                        ${darkMode
+                                            ? 'bg-slate-700 border-slate-600'
+                                            : 'bg-gray-50 border-gray-200'
+                                        }
+                                    `}
+                                >
+                                    <div className="flex items-start justify-between">
+                                        <div className="flex-1">
+                                            <h4 className={`font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                {article.title}
+                                            </h4>
+                                            <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                                                {article.source} • {article.orientation}
+                                            </p>
+                                        </div>
+                                        <div className="flex gap-2 ml-4">
                                             <button
-                                                onClick={() => {
-                                                    onUpdateNews(editingNews.id, editingNews);
-                                                    setEditingNews(null);
-                                                }}
-                                                className="px-4 py-2 bg-green-500 text-white rounded-lg"
+                                                onClick={() => startEdit(article)}
+                                                className="text-blue-500 hover:text-blue-600 text-sm"
                                             >
-                                                Sauvegarder
+                                                Éditer
                                             </button>
                                             <button
-                                                onClick={() => setEditingNews(null)}
-                                                className="px-4 py-2 bg-gray-500 text-white rounded-lg"
+                                                onClick={() => handleDelete(article.id)}
+                                                className="text-red-500 hover:text-red-600 text-sm"
                                             >
-                                                Annuler
+                                                Supprimer
                                             </button>
                                         </div>
                                     </div>
-                                ) : (
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <h4 className="font-bold">{item.title}</h4>
-                                            <p className="text-sm text-gray-500">{item.source} • {item.category}</p>
-                                        </div>
-                                        <div className="flex gap-2">
-                                            <button
-                                                onClick={() => setEditingNews(item)}
-                                                className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
-                                            >
-                                                <Edit className="w-4 h-4" />
-                                            </button>
-                                            <button
-                                                onClick={() => onDeleteNews(item.id)}
-                                                className="p-2 hover:bg-red-500/20 text-red-500 rounded-lg transition-colors"
-                                            >
-                                                <Trash2 className="w-4 h-4" />
-                                            </button>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        ))}
+                                </div>
+                            ))}
+                        </div>
                     </div>
                 </div>
             </div>
