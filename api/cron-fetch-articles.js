@@ -1,76 +1,79 @@
 // Fichier : api/cron-fetch-articles.js
-// VERSION "ULTRA-MINIMALISTE" - On élimine toutes les variables
+// Version ULTIME : Traitement par lots pour respecter les limites de Vercel.
 
 import { createClient } from '@supabase/supabase-js';
 import RssParser from 'rss-parser';
+import { newsSources } from './newsSources.js';
 
 export default async function handler(req, res) {
-    // 1. Vérification du secret (on sait que ça marche)
     if (req.headers['authorization'] !== `Bearer ${process.env.CRON_SECRET}`) {
-        return res.status(401).json({ error: 'Auth a échoué' });
+        return res.status(401).json({ error: 'Accès non autorisé' });
     }
 
     try {
-        console.log('--- DÉBUT DU TEST ULTRA-MINIMALISTE ---');
+        console.log('Cron job par LOTS démarré.');
+        const startTime = Date.now();
 
-        // 2. Initialisation directe
-        const supabase = createClient(
-            process.env.REACT_APP_SUPABASE_URL,
-            process.env.REACT_APP_SUPABASE_SERVICE_KEY
-        );
-        console.log('Étape A: Client Supabase créé.');
+        const supabase = createClient(process.env.REACT_APP_SUPABASE_URL, process.env.REACT_APP_SUPABASE_SERVICE_KEY);
+        const parser = new RssParser({ timeout: 8000 });
 
-        const parser = new RssParser();
-        console.log('Étape B: Parser RSS créé.');
-
-        // 3. Parsing d'UNE SEULE source, en dur
-        const sourceUrl = 'https://feeds.leparisien.fr/leparisien/rss';
-        console.log(`Étape C: Parsing de l'URL: ${sourceUrl}`);
-        const feed = await parser.parseURL(sourceUrl);
-        console.log(`Étape D: Feed parsé. ${feed.items.length} articles trouvés.`);
-
-        // 4. Préparation d'UN SEUL article
-        const firstItem = feed.items[0];
-        if (!firstItem) {
-            return res.status(200).json({ message: 'SUCCÈS, mais le flux est vide.' });
-        }
-
-        const articleToInsert = {
-            title: firstItem.title,
-            link: firstItem.link,
-            pubDate: new Date(firstItem.pubDate),
-            guid: firstItem.guid || firstItem.link, // Fallback pour le guid
-            source_name: 'Le Parisien (Test)'
+        const fetchFeed = async (source) => {
+            if (!source || !source.url) return [];
+            try {
+                const feed = await parser.parseURL(source.url);
+                return (feed.items || []).map(item => {
+                    if (item.title && item.link && item.pubDate && item.guid) {
+                        return { title: item.title, link: item.link, pubDate: new Date(item.pubDate), source_name: source.name, image_url: item.enclosure?.url || null, guid: item.guid, orientation: source.orientation || 'neutre', category: source.category || 'généraliste', tags: source.category ? [source.category] : [] };
+                    }
+                    return null;
+                }).filter(Boolean);
+            } catch (error) {
+                console.warn(`⚠️ Le flux ${source.name} a échoué (ignoré): ${error.message}`);
+                return [];
+            }
         };
-        console.log('Étape E: Article préparé pour insertion.');
 
-        // 5. Insertion de cet unique article
-        const { error } = await supabase
-            .from('articles')
-            .upsert(articleToInsert, { onConflict: 'link' });
+        const BATCH_SIZE = 10; // On traite 10 flux à la fois.
+        let allArticlesToInsert = [];
+        let totalSuccess = 0;
+        let totalErrors = 0;
 
-        if (error) {
-            console.error('ERREUR SUPABASE:', error);
-            throw new Error(`Échec de l'insertion Supabase: ${error.message}`);
+        for (let i = 0; i < newsSources.length; i += BATCH_SIZE) {
+            const batch = newsSources.slice(i, i + BATCH_SIZE);
+            console.log(`Traitement du lot ${i / BATCH_SIZE + 1}... (${batch.length} sources)`);
+
+            const promises = batch.map(fetchFeed);
+            const results = await Promise.allSettled(promises);
+
+            results.forEach(r => {
+                if (r.status === 'fulfilled') {
+                    allArticlesToInsert.push(...r.value);
+                    totalSuccess++;
+                } else {
+                    totalErrors++;
+                }
+            });
         }
-        console.log('Étape F: Insertion dans Supabase réussie.');
 
-        // 6. Si on arrive ici, TOUT a fonctionné.
-        console.log('--- FIN DU TEST ULTRA-MINIMALISTE : SUCCÈS TOTAL ---');
-        return res.status(200).json({
-            message: 'VICTOIRE ! Le test minimaliste a réussi et a inséré un article.'
-        });
+        console.log(`📊 Traitement des flux terminé: ${totalSuccess} succès, ${totalErrors} échecs.`);
+
+        if (allArticlesToInsert.length === 0) {
+            return res.status(200).json({ message: 'Aucun article trouvé, mais le script a fonctionné.' });
+        }
+
+        console.log(`📝 ${allArticlesToInsert.length} articles à insérer...`);
+        const { data, error: dbError } = await supabase.from('articles').upsert(allArticlesToInsert, { onConflict: 'link' }).select();
+
+        if (dbError) throw new Error(`Erreur Supabase: ${dbError.message}`);
+
+        const insertedCount = data ? data.length : 0;
+        const duration = Date.now() - startTime;
+        console.log(`✅ Cron terminé en ${duration}ms`);
+
+        return res.status(200).json({ success: true, message: `${insertedCount} articles insérés avec succès`, articles_found: allArticlesToInsert.length, articles_inserted: insertedCount });
 
     } catch (e) {
-        // Si QUOIQUE CE SOIT plante, on le verra ici.
-        console.error('--- ERREUR FATALE DANS LE TEST MINIMALISTE ---');
-        console.error('Message:', e.message);
-        console.error('Stack Trace:', e.stack);
-
-        return res.status(500).json({
-            error: 'Le test minimaliste a échoué',
-            message: e.message,
-            stack: e.stack // On renvoie toute l'erreur pour la voir dans cron-job.org
-        });
+        console.error("❌ ERREUR FATALE:", e.message);
+        return res.status(500).json({ error: "Erreur critique dans le CRON", message: e.message });
     }
 }
