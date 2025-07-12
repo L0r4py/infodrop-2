@@ -1,6 +1,6 @@
 {
     "functions": {
-        "api/cron-fetch-articles": {
+        "api/cron-fetch-articles.js": {
             "maxDuration": 45
         }
     }
