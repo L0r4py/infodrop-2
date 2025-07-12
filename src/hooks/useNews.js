@@ -1,7 +1,7 @@
 // src/hooks/useNews.js
-// Version FINALE "PARE-BALLES" - Nettoie et sécurise toutes les données avec toutes les fonctions CRUD
+// Version FINALE - Protection contre les race conditions
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { db, isSupabaseConfigured } from '../lib/supabase';
 import { mockNews } from '../data/mockNews';
 
@@ -14,8 +14,27 @@ export const useNews = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState(null);
 
-    // Charger les actualités depuis Supabase avec conversion PARE-BALLES
+    // 🔥 PROTECTION CONTRE LES RACE CONDITIONS
+    const loadingRef = useRef(false);
+    const abortControllerRef = useRef(null);
+
+    // Charger les actualités avec protection contre les appels concurrents
     const loadNews = useCallback(async () => {
+        // 🛡️ Si un chargement est déjà en cours, on abandonne
+        if (loadingRef.current) {
+            console.log('⚠️ Chargement déjà en cours, abandon...');
+            return;
+        }
+
+        // 🛡️ Annuler toute requête précédente
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+        }
+
+        // Marquer le début du chargement
+        loadingRef.current = true;
+        abortControllerRef.current = new AbortController();
+
         setIsLoading(true);
         setError(null);
 
@@ -23,36 +42,40 @@ export const useNews = () => {
             if (!USE_SUPABASE || !isSupabaseConfigured()) {
                 console.log('📌 Utilisation des données mock');
                 setNews(mockNews);
-                setIsLoading(false);
                 return;
             }
 
             console.log('📥 Chargement des articles depuis Supabase...');
 
+            // 🛡️ Requête avec signal d'annulation
             const { data, error: supabaseError } = await db
                 .from('articles')
                 .select('*')
                 .order('pubDate', { ascending: false })
-                .limit(300);
+                .limit(300)
+                .abortSignal(abortControllerRef.current.signal);
+
+            // Si la requête a été annulée, on s'arrête
+            if (abortControllerRef.current.signal.aborted) {
+                console.log('🛑 Requête annulée');
+                return;
+            }
 
             if (supabaseError) throw supabaseError;
 
-            // ✅ CONVERSION PARE-BALLES : Sécurisation de toutes les données
+            // CONVERSION PARE-BALLES : Sécurisation de toutes les données
             const convertedNews = (data || []).map(article => {
-                // S'assurer que chaque valeur est du bon type, avec un fallback solide
                 const safeTitle = String(article.title || 'Sans titre');
                 const safeSource = String(article.source_name || 'Source inconnue');
                 const safeLink = String(article.link || '#');
                 const safeOrientation = String(article.orientation || 'neutre');
                 const safeCategory = String(article.category || 'généraliste');
 
-                // Gestion sécurisée des tags
                 let safeTags = [];
                 if (Array.isArray(article.tags)) {
                     safeTags = article.tags.filter(tag => typeof tag === 'string');
                 }
 
-                // Gestion sécurisée de la date
                 let safeTimestamp = Date.now();
                 try {
                     if (article.pubDate) {
@@ -86,15 +109,26 @@ export const useNews = () => {
             const twentyFourHoursAgo = Date.now() - (24 * 60 * 60 * 1000);
             const recentNews = convertedNews.filter(article => article.timestamp > twentyFourHoursAgo);
 
-            console.log(`✅ ${recentNews.length} articles des dernières 24h chargés`);
-            setNews(recentNews);
+            // 🛡️ Vérifier une dernière fois qu'on n'a pas été annulé
+            if (!abortControllerRef.current.signal.aborted) {
+                console.log(`✅ ${recentNews.length} articles des dernières 24h chargés`);
+                setNews(recentNews);
+            }
 
         } catch (err) {
+            // Ignorer les erreurs d'annulation
+            if (err.name === 'AbortError') {
+                console.log('🛑 Chargement annulé');
+                return;
+            }
+
             console.error('❌ Erreur chargement articles:', err);
             setError(err.message);
             console.log('📌 Fallback vers les données mock');
             setNews(mockNews);
         } finally {
+            // Marquer la fin du chargement
+            loadingRef.current = false;
             setIsLoading(false);
         }
     }, []);
@@ -102,24 +136,36 @@ export const useNews = () => {
     // Charger au montage du composant
     useEffect(() => {
         loadNews();
+
+        // Nettoyage au démontage
+        return () => {
+            if (abortControllerRef.current) {
+                abortControllerRef.current.abort();
+            }
+        };
     }, [loadNews]);
 
-    // Actualisation automatique toutes les 30 secondes
+    // 🛡️ Actualisation automatique SÉCURISÉE
     useEffect(() => {
-        if (USE_SUPABASE && isSupabaseConfigured()) {
-            const interval = setInterval(() => {
-                console.log('⏰ Actualisation automatique...');
-                loadNews();
-            }, 30000);
+        if (!USE_SUPABASE || !isSupabaseConfigured()) return;
 
-            return () => clearInterval(interval);
-        }
+        const interval = setInterval(() => {
+            console.log('⏰ Tentative d\'actualisation automatique...');
+            loadNews(); // La fonction se protège elle-même contre les appels concurrents
+        }, 30000);
+
+        return () => {
+            clearInterval(interval);
+            // Annuler toute requête en cours
+            if (abortControllerRef.current) {
+                abortControllerRef.current.abort();
+            }
+        };
     }, [loadNews]);
 
     // ✅ FONCTION : Ajouter un article (Admin)
     const addNews = useCallback(async (newArticle) => {
         if (!USE_SUPABASE || !isSupabaseConfigured()) {
-            // Mode mock : ajouter localement
             const mockArticle = {
                 id: Date.now(),
                 title: String(newArticle.title || 'Sans titre'),
@@ -163,7 +209,6 @@ export const useNews = () => {
 
             if (error) throw error;
 
-            // Ajouter l'article converti à la liste locale avec conversion PARE-BALLES
             const convertedArticle = {
                 id: data.id,
                 title: String(data.title || 'Sans titre'),
@@ -195,7 +240,6 @@ export const useNews = () => {
         if (!id) return { success: false, error: 'ID manquant' };
 
         if (!USE_SUPABASE || !isSupabaseConfigured()) {
-            // Mode mock : mettre à jour localement
             setNews(prev => prev.map(item =>
                 item.id === id ? { ...item, ...updates } : item
             ));
@@ -221,7 +265,6 @@ export const useNews = () => {
 
             if (error) throw error;
 
-            // Mettre à jour localement avec sécurisation des données
             setNews(prev => prev.map(item => {
                 if (item.id === id) {
                     return {
@@ -252,7 +295,6 @@ export const useNews = () => {
         if (!id) return { success: false, error: 'ID manquant' };
 
         if (!USE_SUPABASE || !isSupabaseConfigured()) {
-            // Mode mock : supprimer localement
             setNews(prev => prev.filter(item => item.id !== id));
             return { success: true };
         }
@@ -267,7 +309,6 @@ export const useNews = () => {
 
             if (error) throw error;
 
-            // Supprimer localement
             setNews(prev => prev.filter(item => item.id !== id));
 
             console.log('✅ Article supprimé');
@@ -279,11 +320,10 @@ export const useNews = () => {
         }
     }, []);
 
-    // ✅ FONCTION : Marquer comme lu (incrémenter les vues)
+    // ✅ FONCTION : Marquer comme lu
     const markAsRead = useCallback(async (id) => {
         if (!id) return;
 
-        // Mise à jour locale immédiate pour la réactivité
         setNews(prev =>
             prev.map(item =>
                 item.id === id
@@ -292,13 +332,10 @@ export const useNews = () => {
             )
         );
 
-        // Mise à jour en base si Supabase est actif
         if (USE_SUPABASE && isSupabaseConfigured()) {
             try {
-                // Essayer d'abord la fonction RPC
                 const { error } = await db.rpc('increment_views', { article_id: id });
 
-                // Si la fonction RPC n'existe pas, faire un update classique
                 if (error && error.code === '42883') {
                     const article = news.find(n => n.id === id);
                     if (article) {
@@ -310,7 +347,6 @@ export const useNews = () => {
                 }
             } catch (err) {
                 console.error('Erreur incrémentation vues:', err);
-                // Pas grave si ça échoue, on continue
             }
         }
     }, [news]);
@@ -319,7 +355,6 @@ export const useNews = () => {
     const incrementClicks = useCallback(async (id) => {
         if (!id) return;
 
-        // Mise à jour locale
         setNews(prev =>
             prev.map(item =>
                 item.id === id
@@ -343,25 +378,27 @@ export const useNews = () => {
         }
     }, [news]);
 
-    // Filtrer les news par orientation et tags
+    // Filtrer les news (avec protection)
     const filteredNews = useMemo(() => {
+        // 🛡️ Protection contre les états invalides
+        if (!Array.isArray(news)) return [];
+
         let filtered = [...news];
 
-        // Filtrer par orientation
         if (selectedCategory !== 'all') {
-            filtered = filtered.filter(item => String(item.orientation) === selectedCategory);
+            filtered = filtered.filter(item =>
+                item && String(item.orientation) === selectedCategory
+            );
         }
 
-        // Filtrer par tags
         if (selectedTags.length > 0) {
             filtered = filtered.filter(item =>
-                item.tags && Array.isArray(item.tags) &&
+                item && item.tags && Array.isArray(item.tags) &&
                 item.tags.some(tag => selectedTags.includes(tag))
             );
         }
 
-        // Toujours trier par date décroissante
-        filtered.sort((a, b) => b.timestamp - a.timestamp);
+        filtered.sort((a, b) => (b?.timestamp || 0) - (a?.timestamp || 0));
 
         return filtered;
     }, [news, selectedCategory, selectedTags]);
@@ -369,15 +406,17 @@ export const useNews = () => {
     // Obtenir tous les tags uniques avec sécurisation
     const allTags = useMemo(() => {
         const tags = new Set();
-        news.forEach(item => {
-            if (item.tags && Array.isArray(item.tags)) {
-                item.tags.forEach(tag => {
-                    if (tag && typeof tag === 'string') {
-                        tags.add(tag);
-                    }
-                });
-            }
-        });
+        if (Array.isArray(news)) {
+            news.forEach(item => {
+                if (item && item.tags && Array.isArray(item.tags)) {
+                    item.tags.forEach(tag => {
+                        if (tag && typeof tag === 'string') {
+                            tags.add(tag);
+                        }
+                    });
+                }
+            });
+        }
         return Array.from(tags).sort();
     }, [news]);
 
@@ -397,17 +436,25 @@ export const useNews = () => {
     }, []);
 
     const forceRefresh = useCallback(() => {
-        console.log('🔄 Rafraîchissement forcé');
+        console.log('🔄 Rafraîchissement forcé demandé');
+        // Si un chargement est en cours, on annule
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+        }
+        // On force le rechargement
+        loadingRef.current = false;
         loadNews();
     }, [loadNews]);
 
-    // ✅ FONCTION : Recherche dans les articles avec sécurisation
+    // ✅ FONCTION : Recherche
     const searchNews = useCallback((query) => {
         if (!query || typeof query !== 'string') return news;
+        if (!Array.isArray(news)) return [];
 
         const lowerQuery = query.toLowerCase().trim();
 
         return news.filter(item => {
+            if (!item) return false;
             const safeTitle = String(item.title || '').toLowerCase();
             const safeSource = String(item.source || '').toLowerCase();
             const hasTitleMatch = safeTitle.includes(lowerQuery);
@@ -419,58 +466,62 @@ export const useNews = () => {
         });
     }, [news]);
 
-    // Statistiques détaillées avec sécurisation
+    // Statistiques avec protection
     const getNewsStats = useCallback(() => {
         const stats = {
-            total: news.length,
+            total: 0,
             byOrientation: {},
             byCategory: {},
             bySource: {},
-            last24h: news.length,
+            last24h: 0,
             mostViewed: null,
             mostClicked: null
         };
 
-        // Compter par orientation, catégorie et source avec sécurisation
+        if (!Array.isArray(news)) return stats;
+
+        stats.total = news.length;
+        stats.last24h = news.length;
+
         news.forEach(item => {
-            // Par orientation
+            if (!item) return;
+
             const orientation = String(item.orientation || 'neutre');
             stats.byOrientation[orientation] = (stats.byOrientation[orientation] || 0) + 1;
 
-            // Par catégorie
             const category = String(item.category || 'généraliste');
             stats.byCategory[category] = (stats.byCategory[category] || 0) + 1;
 
-            // Par source
             const source = String(item.source || 'Inconnue');
             stats.bySource[source] = (stats.bySource[source] || 0) + 1;
         });
 
-        // Articles les plus vus/cliqués
         if (news.length > 0) {
-            stats.mostViewed = [...news].sort((a, b) => (Number(b.views) || 0) - (Number(a.views) || 0))[0];
-            stats.mostClicked = [...news].sort((a, b) => (Number(b.clicks) || 0) - (Number(a.clicks) || 0))[0];
+            stats.mostViewed = [...news]
+                .filter(item => item)
+                .sort((a, b) => (Number(b?.views) || 0) - (Number(a?.views) || 0))[0];
+            stats.mostClicked = [...news]
+                .filter(item => item)
+                .sort((a, b) => (Number(b?.clicks) || 0) - (Number(a?.clicks) || 0))[0];
         }
 
         return stats;
     }, [news]);
 
-    // Fonction pour obtenir les stats globales depuis Supabase
+    // Stats globales
     const getStats = useCallback(async () => {
         if (!USE_SUPABASE || !isSupabaseConfigured()) {
             return {
                 total_articles: news.length,
-                active_sources: new Set(news.map(n => n.source)).size
+                active_sources: new Set(news.map(n => n?.source).filter(Boolean)).size
             };
         }
 
         try {
-            // Compter le total d'articles dans la base
             const { count: totalCount } = await db
                 .from('articles')
                 .select('*', { count: 'exact', head: true });
 
-            // Récupérer les sources uniques des dernières 24h
             const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
             const { data: recentArticles } = await db
                 .from('articles')
@@ -487,12 +538,12 @@ export const useNews = () => {
             console.error('Erreur récupération stats:', err);
             return {
                 total_articles: news.length,
-                active_sources: new Set(news.map(n => n.source)).size
+                active_sources: new Set(news.map(n => n?.source).filter(Boolean)).size
             };
         }
     }, [news]);
 
-    // Helper pour formater les dates avec sécurisation
+    // Helper pour formater les dates
     const formatDate = useCallback((dateString) => {
         if (!dateString) return '';
 
@@ -500,20 +551,17 @@ export const useNews = () => {
             const date = new Date(dateString);
             if (isNaN(date.getTime())) return '';
 
-            // Calculer le temps écoulé
             const now = new Date();
             const diffMs = now - date;
             const diffMins = Math.floor(diffMs / 60000);
             const diffHours = Math.floor(diffMs / 3600000);
             const diffDays = Math.floor(diffMs / 86400000);
 
-            // Affichage relatif pour les articles récents
             if (diffMins < 1) return 'À l\'instant';
             if (diffMins < 60) return `Il y a ${diffMins} minute${diffMins > 1 ? 's' : ''}`;
             if (diffHours < 24) return `Il y a ${diffHours} heure${diffHours > 1 ? 's' : ''}`;
             if (diffDays < 7) return `Il y a ${diffDays} jour${diffDays > 1 ? 's' : ''}`;
 
-            // Format complet pour les articles plus anciens
             return date.toLocaleString('fr-FR', {
                 day: '2-digit',
                 month: '2-digit',
@@ -560,8 +608,8 @@ export const useNews = () => {
 
         // Helpers
         formatDate,
-        totalNews: news.length,
-        totalFilteredNews: filteredNews.length
+        totalNews: Array.isArray(news) ? news.length : 0,
+        totalFilteredNews: Array.isArray(filteredNews) ? filteredNews.length : 0
     };
 };
 
