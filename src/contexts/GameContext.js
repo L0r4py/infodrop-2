@@ -1,6 +1,6 @@
 // ========================================================================
-// Fichier COMPLET et ROBUSTE : src/contexts/GameContext.js
-// Ce code garantit que `userStats` n'est jamais `undefined`.
+// Fichier COMPLET et AMÉLIORÉ : src/contexts/GameContext.js
+// Logique de mise à jour des statistiques ajoutée.
 // ========================================================================
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
@@ -10,8 +10,6 @@ import { grades } from '../data/rewards';
 
 const GameContext = createContext();
 
-// On définit un état initial pour les stats. C'est la clé de la solution.
-// L'objet a la même "forme" que les vraies données, mais avec des valeurs par défaut.
 const initialStats = {
     xp: 0,
     level: 1,
@@ -20,24 +18,21 @@ const initialStats = {
     readCount: 0,
     diversityScore: 0,
     badges: [],
-    orientationCounts: {}, // Important : commence comme un objet vide
+    orientationCounts: {},
 };
 
 export const GameProvider = ({ children }) => {
     const { user } = useAuth();
-    // On utilise l'état initial pour que userStats ne soit JAMAIS undefined.
     const [userStats, setUserStats] = useState(initialStats);
     const [loading, setLoading] = useState(true);
 
-    // Animations (on peut les laisser ici)
     const [showXPAnimation, setShowXPAnimation] = useState(false);
     const [xpAnimationPoints, setXpAnimationPoints] = useState(0);
     const [gradeUpAnimation, setGradeUpAnimation] = useState(false);
 
-    // Fonction pour récupérer les stats de l'utilisateur
     const fetchUserStats = useCallback(async (userId) => {
         if (!userId) {
-            setUserStats(initialStats); // Si pas d'utilisateur, on remet les stats à zéro
+            setUserStats(initialStats);
             setLoading(false);
             return;
         }
@@ -50,7 +45,9 @@ export const GameProvider = ({ children }) => {
                 .eq('id', userId)
                 .single();
 
-            if (error) throw error;
+            if (error && error.code !== 'PGRST116') { // Ignore "no rows found" error
+                throw error;
+            }
 
             if (data) {
                 setUserStats({
@@ -63,33 +60,66 @@ export const GameProvider = ({ children }) => {
                     badges: data.badges || [],
                     orientationCounts: data.orientation_counts || {},
                 });
+            } else {
+                // Si aucun profil n'existe pour cet utilisateur, on initialise avec les valeurs par défaut
+                setUserStats(initialStats);
             }
         } catch (error) {
             console.error("Erreur lors de la récupération des stats utilisateur:", error);
-            setUserStats(initialStats); // En cas d'erreur, on repart d'un état stable
+            setUserStats(initialStats);
         } finally {
             setLoading(false);
         }
     }, []);
 
-    // On lance la récupération des stats quand l'utilisateur est connu
     useEffect(() => {
         fetchUserStats(user?.id);
     }, [user, fetchUserStats]);
 
-    // Logique pour gérer la lecture d'un article
+    // **AMÉLIORATION MAJEURE ICI**
     const handleReadNews = useCallback(async (article) => {
-        // La logique de gain d'XP, mise à jour des stats, etc. irait ici.
-        // Pour l'instant, on simule un gain d'XP pour l'animation.
-        setXpAnimationPoints(5); // 5 points par article lu
+        if (!user || !article) return; // Sécurité
+
+        const pointsGagnes = 5;
+
+        // 1. Mettre à jour l'état local pour une réactivité instantanée
+        setUserStats(prevStats => {
+            // Met à jour le compteur pour l'orientation de l'article lu
+            const newOrientationCounts = { ...prevStats.orientationCounts };
+            const orientation = article.orientation || 'neutre';
+            newOrientationCounts[orientation] = (newOrientationCounts[orientation] || 0) + 1;
+
+            // Met à jour le score de diversité
+            const uniqueOrientationsLues = Object.values(newOrientationCounts).filter(c => c > 0).length;
+            const newDiversityScore = Math.round((uniqueOrientationsLues / 7) * 100);
+
+            // Retourne le nouvel objet de statistiques
+            return {
+                ...prevStats,
+                readCount: prevStats.readCount + 1,
+                xp: prevStats.xp + pointsGagnes,
+                orientationCounts: newOrientationCounts,
+                diversityScore: newDiversityScore,
+            };
+        });
+
+        // 2. Déclencher l'animation
+        setXpAnimationPoints(pointsGagnes);
         setShowXPAnimation(true);
-        setTimeout(() => setShowXPAnimation(false), 3000); // Cacher l'animation après 3s
+        setTimeout(() => setShowXPAnimation(false), 3000);
 
-        // Mettre à jour les stats en base de données
-        // (Cette partie est à implémenter plus en détail)
-    }, []);
+        // 3. Mettre à jour la base de données en arrière-plan
+        // On utilise les nouvelles valeurs calculées pour les envoyer à Supabase
+        const { data: updatedStats } = await supabase.rpc('update_user_stats_on_read', {
+            user_id: user.id,
+            xp_gain: pointsGagnes,
+            read_article_orientation: article.orientation || 'neutre'
+        });
 
-    // Logique pour acheter un badge
+        console.log("Stats mises à jour dans la base de données.");
+
+    }, [user]); // Dépend de `user` pour connaître l'ID
+
     const purchaseBadge = () => {
         console.log("Logique d'achat de badge à implémenter");
     };
@@ -107,7 +137,6 @@ export const GameProvider = ({ children }) => {
     return <GameContext.Provider value={value}>{children}</GameContext.Provider>;
 };
 
-// Hook pour utiliser le contexte
 export const useGame = () => {
     const context = useContext(GameContext);
     if (context === undefined) {
