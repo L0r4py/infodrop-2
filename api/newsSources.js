@@ -1,5 +1,5 @@
 // Fichier : api/newsSources.js
-// Version ES6 pure avec export nommé
+// Version simplifiée pour le CRON avec exports nommés directs
 
 // Sources d'actualités avec leurs orientations et URLs
 export const newsSources = [
@@ -116,3 +116,5 @@ export const newsSources = [
     { name: "Intelligence Online", url: "https://feeds.feedburner.com/IntelligenceOnline-fr", orientation: "centre", category: "tech" },
     { name: "CNRS Le Journal", url: "https://lejournal.cnrs.fr/rss", orientation: "neutre", category: "sciences" }
 ];
+
+// PAS D'EXPORT DEFAULT ! Seulement des exports nommés.
