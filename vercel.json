@@ -1,3 +1,7 @@
 {
-    "crons": []
+    "functions": {
+        "api/cron-fetch-articles": {
+            "maxDuration": 45
+        }
+    }
 }
