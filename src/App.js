@@ -7,7 +7,7 @@ import './styles/animations.css';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from "@vercel/speed-insights/react"
 
-// ❌ PAS D'IMPORT DE DB ICI - Tout vient du hook
+// PAS D'IMPORT DE SUPABASE ICI - Tout vient du hook useNews
 
 // Contexts
 import { AuthProvider } from './contexts/AuthContext';

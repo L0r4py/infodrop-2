@@ -1,13 +1,15 @@
 // src/hooks/useNews.js
-// VERSION FINALE - UN SEUL CHEF DANS LA CUISINE
+// VERSION FINALE - IMPORTS CORRECTS
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { db, isSupabaseConfigured } from '../lib/supabase';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { mockNews } from '../data/mockNews';
 
 const USE_SUPABASE = true;
+const REFRESH_INTERVAL = 30000; // 30 secondes
 
 export const useNews = () => {
+    // États
     const [news, setNews] = useState([]);
     const [selectedCategory, setSelectedCategory] = useState('all');
     const [selectedTags, setSelectedTags] = useState([]);
@@ -27,12 +29,17 @@ export const useNews = () => {
 
     // ✅ FONCTION PRIVÉE : Charger les stats globales
     const fetchGlobalStats = useCallback(async () => {
+        if (!supabase) {
+            console.warn('⚠️ Supabase non disponible pour les stats');
+            return;
+        }
+
         try {
             const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
             const [articlesRes, sourcesRes] = await Promise.all([
-                db.from('articles').select('id').gte('pubDate', twentyFourHoursAgo),
-                db.from('articles').select('source_name').gte('pubDate', twentyFourHoursAgo)
+                supabase.from('articles').select('id').gte('pubDate', twentyFourHoursAgo),
+                supabase.from('articles').select('source_name').gte('pubDate', twentyFourHoursAgo)
             ]);
 
             if (articlesRes.error) throw articlesRes.error;
@@ -46,11 +53,8 @@ export const useNews = () => {
                 active_sources: uniqueSources.size,
                 articles_publies_24h: total_articles
             });
-
-            console.log('📊 Stats globales mises à jour:', { total_articles, active_sources: uniqueSources.size });
         } catch (err) {
             console.error("Erreur récupération stats globales:", err);
-            // On garde les stats précédentes en cas d'erreur
         }
     }, []);
 
@@ -71,14 +75,16 @@ export const useNews = () => {
         loadingRef.current = true;
         abortControllerRef.current = new AbortController();
 
-        setIsLoading(true);
+        // On met isLoading à true seulement si c'est le premier chargement
+        if (news.length === 0) {
+            setIsLoading(true);
+        }
         setError(null);
 
         try {
-            if (!USE_SUPABASE || !isSupabaseConfigured()) {
+            if (!USE_SUPABASE || !isSupabaseConfigured() || !supabase) {
                 console.log('📌 Utilisation des données mock');
                 setNews(mockNews);
-                // Stats par défaut pour le mode mock
                 setGlobalStats({
                     total_articles: mockNews.length,
                     active_sources: new Set(mockNews.map(n => n.source)).size,
@@ -87,17 +93,16 @@ export const useNews = () => {
                 return;
             }
 
-            console.log('📥 Chargement des articles depuis Supabase...');
+            console.log('📥 Chargement des articles...');
 
             // 🎯 ÉTAPE 1 : Charger les articles
-            const { data, error: supabaseError } = await db
+            const { data, error: supabaseError } = await supabase
                 .from('articles')
                 .select('*')
                 .order('pubDate', { ascending: false })
                 .limit(300)
                 .abortSignal(abortControllerRef.current.signal);
 
-            // Si la requête a été annulée, on s'arrête
             if (abortControllerRef.current.signal.aborted) {
                 console.log('🛑 Requête annulée');
                 return;
@@ -105,7 +110,7 @@ export const useNews = () => {
 
             if (supabaseError) throw supabaseError;
 
-            // CONVERSION PARE-BALLES : Sécurisation de toutes les données
+            // CONVERSION PARE-BALLES
             const convertedNews = (data || []).map(article => {
                 const safeTitle = String(article.title || 'Sans titre');
                 const safeSource = String(article.source_name || 'Source inconnue');
@@ -151,17 +156,15 @@ export const useNews = () => {
             const twentyFourHoursAgo = Date.now() - (24 * 60 * 60 * 1000);
             const recentNews = convertedNews.filter(article => article.timestamp > twentyFourHoursAgo);
 
-            // 🛡️ Vérifier une dernière fois qu'on n'a pas été annulé
             if (!abortControllerRef.current.signal.aborted) {
-                console.log(`✅ ${recentNews.length} articles des dernières 24h chargés`);
+                console.log(`✅ ${recentNews.length} articles chargés`);
                 setNews(recentNews);
 
-                // 🎯 ÉTAPE 2 : SEULEMENT APRÈS, charger les stats
+                // 🎯 ÉTAPE 2 : Charger les stats APRÈS les articles
                 await fetchGlobalStats();
             }
 
         } catch (err) {
-            // Ignorer les erreurs d'annulation
             if (err.name === 'AbortError') {
                 console.log('🛑 Chargement annulé');
                 return;
@@ -169,38 +172,37 @@ export const useNews = () => {
 
             console.error('❌ Erreur chargement articles:', err);
             setError(err.message);
-            console.log('📌 Fallback vers les données mock');
             setNews(mockNews);
         } finally {
-            // Marquer la fin du chargement
             loadingRef.current = false;
             setIsLoading(false);
         }
-    }, [fetchGlobalStats]);
+    }, [fetchGlobalStats, news]);
 
-    // Charger au montage du composant
+    // ✅ UN SEUL useEffect POUR GÉRER TOUT LE CYCLE DE VIE
     useEffect(() => {
-        loadNews();
+        let timeoutId;
+        let mounted = true;
 
-        // Nettoyage au démontage
-        return () => {
-            if (abortControllerRef.current) {
-                abortControllerRef.current.abort();
+        const runLoadCycle = async () => {
+            if (!mounted) return;
+
+            console.log('🔄 Cycle de chargement...');
+            await loadNews();
+
+            // Programmer le prochain cycle SEULEMENT après la fin du chargement
+            if (mounted) {
+                timeoutId = setTimeout(runLoadCycle, REFRESH_INTERVAL);
             }
         };
-    }, [loadNews]);
 
-    // 🛡️ Actualisation automatique SÉCURISÉE
-    useEffect(() => {
-        if (!USE_SUPABASE || !isSupabaseConfigured()) return;
+        // Lancer le premier cycle
+        runLoadCycle();
 
-        const interval = setInterval(() => {
-            console.log('⏰ Actualisation automatique...');
-            loadNews(); // Chargera les news ET les stats
-        }, 30000);
-
+        // Nettoyage
         return () => {
-            clearInterval(interval);
+            mounted = false;
+            clearTimeout(timeoutId);
             if (abortControllerRef.current) {
                 abortControllerRef.current.abort();
             }
@@ -209,7 +211,7 @@ export const useNews = () => {
 
     // ✅ FONCTION : Ajouter un article (Admin)
     const addNews = useCallback(async (newArticle) => {
-        if (!USE_SUPABASE || !isSupabaseConfigured()) {
+        if (!USE_SUPABASE || !isSupabaseConfigured() || !supabase) {
             const mockArticle = {
                 id: Date.now(),
                 title: String(newArticle.title || 'Sans titre'),
@@ -229,8 +231,6 @@ export const useNews = () => {
         }
 
         try {
-            console.log('➕ Ajout d\'un nouvel article...');
-
             const articleToInsert = {
                 title: String(newArticle.title || 'Sans titre'),
                 link: String(newArticle.url || `https://admin.local/article-${Date.now()}`),
@@ -245,7 +245,7 @@ export const useNews = () => {
                 clicks: 0
             };
 
-            const { data, error } = await db
+            const { data, error } = await supabase
                 .from('articles')
                 .insert([articleToInsert])
                 .select()
@@ -269,9 +269,6 @@ export const useNews = () => {
             };
 
             setNews(prev => [convertedArticle, ...prev].sort((a, b) => b.timestamp - a.timestamp));
-            console.log('✅ Article ajouté avec succès');
-
-            // Mettre à jour les stats après ajout
             await fetchGlobalStats();
 
             return { success: true, data: convertedArticle };
@@ -286,7 +283,7 @@ export const useNews = () => {
     const updateNews = useCallback(async (id, updates) => {
         if (!id) return { success: false, error: 'ID manquant' };
 
-        if (!USE_SUPABASE || !isSupabaseConfigured()) {
+        if (!USE_SUPABASE || !isSupabaseConfigured() || !supabase) {
             setNews(prev => prev.map(item =>
                 item.id === id ? { ...item, ...updates } : item
             ));
@@ -294,8 +291,6 @@ export const useNews = () => {
         }
 
         try {
-            console.log('📝 Mise à jour de l\'article', id);
-
             const updateData = {};
             if (updates.title !== undefined) updateData.title = String(updates.title);
             if (updates.source !== undefined) updateData.source_name = String(updates.source);
@@ -305,7 +300,7 @@ export const useNews = () => {
             if (updates.tags !== undefined) updateData.tags = Array.isArray(updates.tags) ? updates.tags.filter(t => typeof t === 'string') : [];
             if (updates.imageUrl !== undefined) updateData.image_url = updates.imageUrl;
 
-            const { error } = await db
+            const { error } = await supabase
                 .from('articles')
                 .update(updateData)
                 .eq('id', id);
@@ -328,7 +323,6 @@ export const useNews = () => {
                 return item;
             }));
 
-            console.log('✅ Article mis à jour');
             return { success: true };
 
         } catch (err) {
@@ -341,15 +335,13 @@ export const useNews = () => {
     const deleteNews = useCallback(async (id) => {
         if (!id) return { success: false, error: 'ID manquant' };
 
-        if (!USE_SUPABASE || !isSupabaseConfigured()) {
+        if (!USE_SUPABASE || !isSupabaseConfigured() || !supabase) {
             setNews(prev => prev.filter(item => item.id !== id));
             return { success: true };
         }
 
         try {
-            console.log('🗑️ Suppression de l\'article', id);
-
-            const { error } = await db
+            const { error } = await supabase
                 .from('articles')
                 .delete()
                 .eq('id', id);
@@ -357,11 +349,8 @@ export const useNews = () => {
             if (error) throw error;
 
             setNews(prev => prev.filter(item => item.id !== id));
-
-            // Mettre à jour les stats après suppression
             await fetchGlobalStats();
 
-            console.log('✅ Article supprimé');
             return { success: true };
 
         } catch (err) {
@@ -382,14 +371,14 @@ export const useNews = () => {
             )
         );
 
-        if (USE_SUPABASE && isSupabaseConfigured()) {
+        if (USE_SUPABASE && isSupabaseConfigured() && supabase) {
             try {
-                const { error } = await db.rpc('increment_views', { article_id: id });
+                const { error } = await supabase.rpc('increment_views', { article_id: id });
 
                 if (error && error.code === '42883') {
                     const article = news.find(n => n.id === id);
                     if (article) {
-                        await db
+                        await supabase
                             .from('articles')
                             .update({ views: (Number(article.views) || 0) + 1 })
                             .eq('id', id);
@@ -413,11 +402,11 @@ export const useNews = () => {
             )
         );
 
-        if (USE_SUPABASE && isSupabaseConfigured()) {
+        if (USE_SUPABASE && isSupabaseConfigured() && supabase) {
             try {
                 const article = news.find(n => n.id === id);
                 if (article) {
-                    await db
+                    await supabase
                         .from('articles')
                         .update({ clicks: (Number(article.clicks) || 0) + 1 })
                         .eq('id', id);
@@ -428,9 +417,8 @@ export const useNews = () => {
         }
     }, [news]);
 
-    // Filtrer les news (avec protection)
+    // Filtrer les news
     const filteredNews = useMemo(() => {
-        // 🛡️ Protection contre les états invalides
         if (!Array.isArray(news)) return [];
 
         let filtered = [...news];
@@ -453,7 +441,7 @@ export const useNews = () => {
         return filtered;
     }, [news, selectedCategory, selectedTags]);
 
-    // Obtenir tous les tags uniques avec sécurisation
+    // Obtenir tous les tags uniques
     const allTags = useMemo(() => {
         const tags = new Set();
         if (Array.isArray(news)) {
@@ -470,7 +458,7 @@ export const useNews = () => {
         return Array.from(tags).sort();
     }, [news]);
 
-    // Actions simples avec validation
+    // Actions de filtrage
     const toggleTag = useCallback((tag) => {
         if (!tag || typeof tag !== 'string') return;
 
@@ -486,17 +474,15 @@ export const useNews = () => {
     }, []);
 
     const forceRefresh = useCallback(() => {
-        console.log('🔄 Rafraîchissement forcé demandé');
-        // Si un chargement est en cours, on annule
+        console.log('🔄 Rafraîchissement forcé');
         if (abortControllerRef.current) {
             abortControllerRef.current.abort();
         }
-        // On force le rechargement
         loadingRef.current = false;
         loadNews();
     }, [loadNews]);
 
-    // ✅ FONCTION : Recherche
+    // Recherche
     const searchNews = useCallback((query) => {
         if (!query || typeof query !== 'string') return news;
         if (!Array.isArray(news)) return [];
@@ -516,7 +502,7 @@ export const useNews = () => {
         });
     }, [news]);
 
-    // ✅ STATISTIQUES LOCALES basées sur l'état news
+    // Statistiques locales
     const getNewsStats = useCallback(() => {
         const stats = {
             total: 0,
@@ -599,7 +585,7 @@ export const useNews = () => {
         allTags,
         isLoading,
         error,
-        globalStats, // ✅ ON RETOURNE LES STATS GLOBALES
+        globalStats,
 
         // Actions CRUD
         addNews,
@@ -618,7 +604,7 @@ export const useNews = () => {
         forceRefresh,
         loadNews,
 
-        // Statistiques LOCALES
+        // Statistiques
         getNewsStats,
 
         // Helpers
