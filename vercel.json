@@ -1,13 +1,10 @@
 {
     "functions": {
+        "api/cron-fetch-articles.js": {
+            "maxDuration": 60
+        },
         "api/fetch-articles.js": {
             "maxDuration": 30
         }
-    },
-    "rewrites": [
-        {
-            "source": "/api/(.*)",
-            "destination": "/api"
-        }
-    ]
+    }
 }
