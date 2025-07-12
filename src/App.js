@@ -1,4 +1,4 @@
-// src/App.js - VERSION CORRIGÉE
+// src/App.js - VERSION FINALE SIMPLIFIÉE
 
 import React, { useState, useEffect, useCallback } from 'react';
 import './App.css';
@@ -7,8 +7,7 @@ import './styles/animations.css';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from "@vercel/speed-insights/react"
 
-// ✅ IMPORT DIRECT DE LA BASE DE DONNÉES
-import { db } from './lib/supabase';
+// ❌ PAS D'IMPORT DE DB ICI - Tout vient du hook
 
 // Contexts
 import { AuthProvider } from './contexts/AuthContext';
@@ -51,38 +50,7 @@ import { grades } from './data/rewards';
 // Icônes
 import { RefreshCw, Wifi, WifiOff } from 'lucide-react';
 
-// ✅ FONCTION INDÉPENDANTE POUR LES STATS GLOBALES
-const fetchGlobalStats = async () => {
-  try {
-    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-
-    // Requêtes en parallèle pour la performance
-    const [articlesRes, sourcesRes] = await Promise.all([
-      db.from('articles').select('id').gte('pubDate', twentyFourHoursAgo),
-      db.from('articles').select('source_name').gte('pubDate', twentyFourHoursAgo)
-    ]);
-
-    if (articlesRes.error) throw articlesRes.error;
-    if (sourcesRes.error) throw sourcesRes.error;
-
-    const total_articles = articlesRes.data?.length || 0;
-    const uniqueSources = new Set(sourcesRes.data?.map(item => item.source_name) || []);
-
-    return {
-      total_articles: total_articles,
-      active_sources: uniqueSources.size,
-      articles_publies_24h: total_articles, // Pour la compatibilité
-    };
-  } catch (error) {
-    console.error("Erreur récupération stats globales:", error);
-    // Retour d'un objet par défaut pour ne pas faire planter l'UI
-    return {
-      total_articles: 0,
-      active_sources: 0,
-      articles_publies_24h: 0
-    };
-  }
-};
+// ❌ PAS DE fetchGlobalStats ICI - Elle est dans le hook
 
 // 🆕 FONCTION DE NETTOYAGE DES DONNÉES
 const cleanOrientationCounts = (counts) => {
@@ -116,7 +84,7 @@ const InfodropApp = () => {
     xpAnimationPoints
   } = useGame();
 
-  // ✅ ON NE RÉCUPÈRE PLUS getStats DE useNews
+  // ✅ LE HOOK NOUS DONNE TOUT, Y COMPRIS globalStats
   const {
     news,
     filteredNews,
@@ -128,13 +96,14 @@ const InfodropApp = () => {
     allTags,
     isLoading,
     error,
+    globalStats, // ✅ ON RÉCUPÈRE LES STATS DIRECTEMENT
     forceRefresh,
     addNews,
     updateNews,
     deleteNews,
     markAsRead,
     formatDate,
-    getNewsStats // On garde getNewsStats pour les stats locales
+    getNewsStats
   } = useNews();
 
   // État des modals
@@ -152,12 +121,8 @@ const InfodropApp = () => {
   // État de connexion
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
-  // ✅ ÉTAT DES STATISTIQUES GLOBALES
-  const [globalStats, setGlobalStats] = useState({
-    total_articles: 0,
-    active_sources: 0,
-    articles_publies_24h: 0
-  });
+  // ❌ PAS D'ÉTAT LOCAL POUR globalStats - Elles viennent du hook
+  // ❌ PAS DE useEffect POUR CHARGER LES STATS - C'est la correction clé !
 
   // Vérifier la connexion internet
   useEffect(() => {
@@ -172,22 +137,6 @@ const InfodropApp = () => {
       window.removeEventListener('offline', handleOffline);
     };
   }, []);
-
-  // ✅ CHARGEMENT DES STATS GLOBALES CORRIGÉ
-  useEffect(() => {
-    const loadStats = async () => {
-      const stats = await fetchGlobalStats();
-      setGlobalStats(stats);
-    };
-
-    // Charger au montage
-    loadStats();
-
-    // Rafraîchir toutes les 5 minutes
-    const interval = setInterval(loadStats, 5 * 60 * 1000);
-
-    return () => clearInterval(interval);
-  }, []); // ✅ Tableau de dépendances VIDE
 
   // Vérifier les animations en attente au chargement et au focus
   useEffect(() => {
@@ -260,7 +209,7 @@ const InfodropApp = () => {
       <Header
         userStats={userStats}
         onMenuClick={() => setMenuOpen(true)}
-        globalStats={globalStats}
+        globalStats={globalStats} // ✅ Les stats viennent du hook
       />
 
       {/* Info Ticker */}

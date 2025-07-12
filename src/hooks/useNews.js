@@ -1,5 +1,5 @@
 // src/hooks/useNews.js
-// Version FINALE - Protection contre les race conditions - SANS getStats
+// VERSION FINALE - UN SEUL CHEF DANS LA CUISINE
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { db, isSupabaseConfigured } from '../lib/supabase';
@@ -14,11 +14,47 @@ export const useNews = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState(null);
 
+    // ✅ ÉTAT DES STATS GLOBALES CENTRALISÉ ICI
+    const [globalStats, setGlobalStats] = useState({
+        total_articles: 0,
+        active_sources: 0,
+        articles_publies_24h: 0
+    });
+
     // 🔥 PROTECTION CONTRE LES RACE CONDITIONS
     const loadingRef = useRef(false);
     const abortControllerRef = useRef(null);
 
-    // Charger les actualités avec protection contre les appels concurrents
+    // ✅ FONCTION PRIVÉE : Charger les stats globales
+    const fetchGlobalStats = useCallback(async () => {
+        try {
+            const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+            const [articlesRes, sourcesRes] = await Promise.all([
+                db.from('articles').select('id').gte('pubDate', twentyFourHoursAgo),
+                db.from('articles').select('source_name').gte('pubDate', twentyFourHoursAgo)
+            ]);
+
+            if (articlesRes.error) throw articlesRes.error;
+            if (sourcesRes.error) throw sourcesRes.error;
+
+            const total_articles = articlesRes.data?.length || 0;
+            const uniqueSources = new Set(sourcesRes.data?.map(item => item.source_name) || []);
+
+            setGlobalStats({
+                total_articles: total_articles,
+                active_sources: uniqueSources.size,
+                articles_publies_24h: total_articles
+            });
+
+            console.log('📊 Stats globales mises à jour:', { total_articles, active_sources: uniqueSources.size });
+        } catch (err) {
+            console.error("Erreur récupération stats globales:", err);
+            // On garde les stats précédentes en cas d'erreur
+        }
+    }, []);
+
+    // ✅ FONCTION PRINCIPALE : Charger les news PUIS les stats
     const loadNews = useCallback(async () => {
         // 🛡️ Si un chargement est déjà en cours, on abandonne
         if (loadingRef.current) {
@@ -42,12 +78,18 @@ export const useNews = () => {
             if (!USE_SUPABASE || !isSupabaseConfigured()) {
                 console.log('📌 Utilisation des données mock');
                 setNews(mockNews);
+                // Stats par défaut pour le mode mock
+                setGlobalStats({
+                    total_articles: mockNews.length,
+                    active_sources: new Set(mockNews.map(n => n.source)).size,
+                    articles_publies_24h: mockNews.length
+                });
                 return;
             }
 
             console.log('📥 Chargement des articles depuis Supabase...');
 
-            // 🛡️ Requête avec signal d'annulation
+            // 🎯 ÉTAPE 1 : Charger les articles
             const { data, error: supabaseError } = await db
                 .from('articles')
                 .select('*')
@@ -113,6 +155,9 @@ export const useNews = () => {
             if (!abortControllerRef.current.signal.aborted) {
                 console.log(`✅ ${recentNews.length} articles des dernières 24h chargés`);
                 setNews(recentNews);
+
+                // 🎯 ÉTAPE 2 : SEULEMENT APRÈS, charger les stats
+                await fetchGlobalStats();
             }
 
         } catch (err) {
@@ -131,7 +176,7 @@ export const useNews = () => {
             loadingRef.current = false;
             setIsLoading(false);
         }
-    }, []);
+    }, [fetchGlobalStats]);
 
     // Charger au montage du composant
     useEffect(() => {
@@ -150,13 +195,12 @@ export const useNews = () => {
         if (!USE_SUPABASE || !isSupabaseConfigured()) return;
 
         const interval = setInterval(() => {
-            console.log('⏰ Tentative d\'actualisation automatique...');
-            loadNews(); // La fonction se protège elle-même contre les appels concurrents
+            console.log('⏰ Actualisation automatique...');
+            loadNews(); // Chargera les news ET les stats
         }, 30000);
 
         return () => {
             clearInterval(interval);
-            // Annuler toute requête en cours
             if (abortControllerRef.current) {
                 abortControllerRef.current.abort();
             }
@@ -227,13 +271,16 @@ export const useNews = () => {
             setNews(prev => [convertedArticle, ...prev].sort((a, b) => b.timestamp - a.timestamp));
             console.log('✅ Article ajouté avec succès');
 
+            // Mettre à jour les stats après ajout
+            await fetchGlobalStats();
+
             return { success: true, data: convertedArticle };
 
         } catch (err) {
             console.error('❌ Erreur ajout article:', err);
             return { success: false, error: err.message };
         }
-    }, []);
+    }, [fetchGlobalStats]);
 
     // ✅ FONCTION : Mettre à jour un article
     const updateNews = useCallback(async (id, updates) => {
@@ -311,6 +358,9 @@ export const useNews = () => {
 
             setNews(prev => prev.filter(item => item.id !== id));
 
+            // Mettre à jour les stats après suppression
+            await fetchGlobalStats();
+
             console.log('✅ Article supprimé');
             return { success: true };
 
@@ -318,7 +368,7 @@ export const useNews = () => {
             console.error('❌ Erreur suppression:', err);
             return { success: false, error: err.message };
         }
-    }, []);
+    }, [fetchGlobalStats]);
 
     // ✅ FONCTION : Marquer comme lu
     const markAsRead = useCallback(async (id) => {
@@ -466,7 +516,7 @@ export const useNews = () => {
         });
     }, [news]);
 
-    // ✅ STATISTIQUES LOCALES basées sur l'état news (PAS de requêtes DB)
+    // ✅ STATISTIQUES LOCALES basées sur l'état news
     const getNewsStats = useCallback(() => {
         const stats = {
             total: 0,
@@ -507,8 +557,6 @@ export const useNews = () => {
 
         return stats;
     }, [news]);
-
-    // ❌ FONCTION getStats SUPPRIMÉE - Déplacée dans App.js
 
     // Helper pour formater les dates
     const formatDate = useCallback((dateString) => {
@@ -551,6 +599,7 @@ export const useNews = () => {
         allTags,
         isLoading,
         error,
+        globalStats, // ✅ ON RETOURNE LES STATS GLOBALES
 
         // Actions CRUD
         addNews,
@@ -571,7 +620,6 @@ export const useNews = () => {
 
         // Statistiques LOCALES
         getNewsStats,
-        // ❌ getStats RETIRÉ
 
         // Helpers
         formatDate,
