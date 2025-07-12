@@ -1,8 +1,10 @@
 // Fichier : api/cron-fetch-articles.js
-// Version FINALE BLINDÉE avec gestion d'erreurs ultra-robuste
+// VERSION D'AUTOPSIE : On exécute chaque bloc et on rapporte le résultat.
+// Source de test : Le Parisien (stable)
 
 import { createClient } from '@supabase/supabase-js';
 import RssParser from 'rss-parser';
+// On importe newsSources juste pour s'assurer que l'import lui-même ne plante pas.
 import { newsSources } from './newsSources.js';
 
 export default async function handler(req, res) {
@@ -10,113 +12,67 @@ export default async function handler(req, res) {
         return res.status(401).json({ error: 'Accès non autorisé' });
     }
 
-    try {
-        // --- BLOC 1 : Initialisation ---
-        console.log('Cron job PARALLÈLE BLINDÉ démarré.');
-        const startTime = Date.now();
+    const report = {
+        step1_auth: 'Succès',
+        step2_supabase_client_init: 'Pas encore testé',
+        step3_rss_parser_init: 'Pas encore testé',
+        step4_single_feed_parse: 'Pas encore testé',
+        step5_supabase_insert: 'Pas encore testé',
+        final_result: 'Incomplet'
+    };
 
+    try {
+        // --- ÉTAPE 2 : Initialisation du client Supabase ---
         const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
         const supabaseServiceKey = process.env.REACT_APP_SUPABASE_SERVICE_KEY;
-
-        if (!supabaseUrl || !supabaseServiceKey) {
-            throw new Error("Les variables d'environnement Supabase sont manquantes.");
-        }
+        if (!supabaseUrl || !supabaseServiceKey) throw new Error("Variables Supabase manquantes");
 
         const supabase = createClient(supabaseUrl, supabaseServiceKey);
-        const parser = new RssParser({ timeout: 8000 });
+        report.step2_supabase_client_init = 'Succès';
 
-        // --- BLOC 2 : Traitement Parallèle des Flux RSS ---
-        const fetchFeed = async (source) => {
-            if (!source || !source.url) return [];
+        // --- ÉTAPE 3 : Initialisation du RssParser ---
+        const parser = new RssParser({ timeout: 10000 }); // Timeout augmenté à 10s pour être sûr
+        report.step3_rss_parser_init = 'Succès';
 
-            try {
-                const feed = await parser.parseURL(source.url);
-                return (feed.items || []).map(item => {
-                    if (item.title && item.link && item.pubDate && item.guid) {
-                        return {
-                            title: item.title,
-                            link: item.link,
-                            pubDate: new Date(item.pubDate),
-                            source_name: source.name,
-                            image_url: item.enclosure?.url || null,
-                            guid: item.guid,
-                            orientation: source.orientation || 'neutre',
-                            category: source.category || 'généraliste',
-                            tags: source.category ? [source.category] : []
-                        };
-                    }
-                    return null;
-                }).filter(Boolean);
-            } catch (error) {
-                console.warn(`⚠️ Le flux ${source.name} a échoué (ignoré): ${error.message}`);
-                return [];
-            }
-        };
+        // --- ÉTAPE 4 : Test de parsing sur UNE SEULE source ---
+        let articlesToInsert = [];
+        try {
+            // ✅ CORRECTION : Utilisation du flux du Parisien
+            const singleSource = { name: "Le Parisien", url: "https://feeds.leparisien.fr/leparisien/rss" };
+            const feed = await parser.parseURL(singleSource.url);
 
-        const allPromises = (newsSources || []).map(fetchFeed);
-        const results = await Promise.allSettled(allPromises);
-
-        let successCount = 0;
-        let errorCount = 0;
-
-        const allArticlesToInsert = results
-            .filter(r => {
-                if (r.status === 'fulfilled') {
-                    successCount++;
-                    return true;
+            articlesToInsert = (feed.items || []).map(item => {
+                if (item.title && item.link && item.pubDate && item.guid) {
+                    return { title: item.title, link: item.link, pubDate: new Date(item.pubDate), guid: item.guid, source_name: singleSource.name };
                 }
-                errorCount++;
-                return false;
-            })
-            .flatMap(r => r.value);
+                return null;
+            }).filter(Boolean); // Retire les éléments nuls
 
-        console.log(`📊 Flux traités: ${successCount} succès, ${errorCount} échecs`);
-
-        if (allArticlesToInsert.length === 0) {
-            return res.status(200).json({
-                message: 'Aucun article trouvé, mais le script a fonctionné.',
-                sources_success: successCount,
-                sources_error: errorCount,
-                duration_ms: Date.now() - startTime
-            });
+            report.step4_single_feed_parse = `Succès - ${articlesToInsert.length} articles trouvés`;
+        } catch (parseError) {
+            report.step4_single_feed_parse = `ÉCHEC: ${parseError.message}`;
+            throw parseError; // On arrête ici si le parsing échoue
         }
 
-        // --- BLOC 3 : Insertion dans Supabase ---
-        console.log(`📝 ${allArticlesToInsert.length} articles à insérer...`);
-
-        const { data, error: dbError } = await supabase
-            .from('articles')
-            .upsert(allArticlesToInsert, { onConflict: 'link' })
-            .select();
-
-        if (dbError) {
-            throw new Error(`Erreur Supabase: ${dbError.message}`);
+        // --- ÉTAPE 5 : Test d'insertion dans Supabase ---
+        if (articlesToInsert.length > 0) {
+            const { error: dbError } = await supabase.from('articles').upsert(articlesToInsert, { onConflict: 'link' });
+            if (dbError) {
+                report.step5_supabase_insert = `ÉCHEC: ${dbError.message}`;
+                throw dbError;
+            } else {
+                report.step5_supabase_insert = 'Succès';
+            }
+        } else {
+            report.step5_supabase_insert = 'Ignoré (aucun article à insérer)';
         }
 
-        const insertedCount = data ? data.length : 0;
-        const duration = Date.now() - startTime;
-
-        console.log(`✅ Cron terminé en ${duration}ms`);
-
-        return res.status(200).json({
-            success: true,
-            message: `${insertedCount} articles insérés avec succès`,
-            articles_found: allArticlesToInsert.length,
-            articles_inserted: insertedCount,
-            sources_success: successCount,
-            sources_error: errorCount,
-            duration_ms: duration
-        });
+        report.final_result = 'Toutes les étapes ont réussi !';
+        return res.status(200).json({ report });
 
     } catch (e) {
-        // --- BLOC 4 : Capture de toutes les erreurs ---
-        console.error("❌ ERREUR FATALE:", e.message);
-        console.error("Stack:", e.stack);
-
-        return res.status(500).json({
-            error: "Erreur critique dans le CRON",
-            message: e.message,
-            timestamp: new Date().toISOString()
-        });
+        // Si une erreur se produit, on renvoie le rapport dans son état actuel.
+        report.final_result = `ÉCHEC à l'étape en cours: ${e.message}`;
+        return res.status(500).json({ report });
     }
 }
