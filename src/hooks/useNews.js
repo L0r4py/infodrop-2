@@ -1,10 +1,11 @@
-// src/hooks/useNews.js
-// Hook pour gérer les actualités avec chargement incrémental
+// Fichier : /src/hooks/useNews.js
+// Correction : Remplacement de l'export par défaut par un export nommé.
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 
-const useNews = () => {
+// CHANGEMENT 1 : Le mot "export" est ajouté ici
+export const useNews = () => {
     const [news, setNews] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -344,4 +345,4 @@ const useNews = () => {
     };
 };
 
-export default useNews;
+// CHANGEMENT 2 : La ligne "export default" est supprimée d'ici.
