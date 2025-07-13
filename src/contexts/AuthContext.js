@@ -7,6 +7,14 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 // Créer le contexte
 const AuthContext = createContext(null);
 
+// Email admin depuis les variables d'environnement
+const ADMIN_EMAIL = process.env.REACT_APP_ADMIN_EMAIL?.toLowerCase() || 'admin@example.com';
+
+// Log pour vérifier que la variable est bien chargée (à retirer en production)
+if (process.env.NODE_ENV === 'development') {
+    console.log('🔧 Admin email configuré:', ADMIN_EMAIL);
+}
+
 // Hook personnalisé pour utiliser le contexte
 export const useAuth = () => {
     const context = useContext(AuthContext);
@@ -43,7 +51,7 @@ export const AuthProvider = ({ children }) => {
                     const currentUser = session?.user;
                     setUser(currentUser ?? null);
                     // Vérifier si l'utilisateur est admin
-                    setIsAdmin(currentUser?.email === 'l0r4.py@gmail.com');
+                    setIsAdmin(currentUser?.email?.toLowerCase() === ADMIN_EMAIL);
                 }
             } catch (error) {
                 console.error('Erreur initialisation auth:', error);
@@ -62,7 +70,7 @@ export const AuthProvider = ({ children }) => {
                 setSession(session);
                 const currentUser = session?.user;
                 setUser(currentUser ?? null);
-                setIsAdmin(currentUser?.email === 'l0r4.py@gmail.com');
+                setIsAdmin(currentUser?.email?.toLowerCase() === ADMIN_EMAIL);
 
                 // Gérer les différents événements
                 switch (event) {
@@ -90,41 +98,73 @@ export const AuthProvider = ({ children }) => {
         };
     }, []);
 
-    // Fonction de connexion avec lien magique
-    const signInWithMagicLink = async (email) => {
-        if (!isSupabaseConfigured()) {
-            throw new Error('Supabase non configuré');
-        }
+    // ✅ NOUVELLE FONCTION "CERVEAU" - loginOrSignUp
+    const loginOrSignUp = async (email, inviteCode) => {
+        if (!isSupabaseConfigured()) throw new Error('Supabase non configuré');
 
         setIsLoading(true);
-
         try {
-            const { data, error } = await supabase.auth.signInWithOtp({
-                email: email,
-                options: {
-                    // URL de redirection après connexion
-                    emailRedirectTo: window.location.origin,
-                    // Données supplémentaires (optionnel)
-                    data: {
-                        source: 'infodrop'
+            const normalizedEmail = email.toLowerCase();
+            const normalizedCode = inviteCode?.toUpperCase().trim() || '';
+
+            // CAS 1 : L'utilisateur est l'admin
+            if (normalizedEmail === ADMIN_EMAIL) {
+                console.log("🔑 Connexion de l'admin...");
+                const { error } = await supabase.auth.signInWithOtp({
+                    email: normalizedEmail,
+                    options: {
+                        emailRedirectTo: window.location.origin
                     }
-                }
+                });
+                if (error) throw error;
+                return { success: true, message: "Lien de connexion envoyé à l'admin." };
+            }
+
+            // Pour les autres, on appelle la fonction Edge
+            console.log("🔍 Vérification de l'utilisateur...");
+
+            const { data, error } = await supabase.functions.invoke('auth-flow', {
+                body: {
+                    email: normalizedEmail,
+                    inviteCode: normalizedCode
+                },
             });
 
             if (error) throw error;
+            if (!data.success) throw new Error(data.message);
 
-            console.log('📧 Lien magique envoyé à:', email);
-            return { success: true };
+            // Si la fonction serveur demande d'envoyer le magic link
+            if (data.action === 'send_magic_link') {
+                console.log("📧 Envoi du lien magique...");
+                const { error: linkError } = await supabase.auth.signInWithOtp({
+                    email: normalizedEmail,
+                    options: {
+                        emailRedirectTo: window.location.origin
+                    }
+                });
+
+                if (linkError) throw linkError;
+
+                return {
+                    success: true,
+                    message: "Lien de connexion envoyé ! Consultez votre boîte mail."
+                };
+            }
+
+            return { success: true, message: data.message };
 
         } catch (error) {
-            console.error("❌ Erreur lors de l'envoi du lien magique:", error);
-            return {
-                success: false,
-                error: error.message || "Erreur lors de l'envoi du lien"
-            };
+            console.error("❌ Erreur Auth:", error);
+            return { success: false, error: error.message };
         } finally {
             setIsLoading(false);
         }
+    };
+
+    // Fonction de connexion avec lien magique (ancienne, on la garde pour compatibilité)
+    const signInWithMagicLink = async (email, inviteCode = '') => {
+        console.warn('⚠️ signInWithMagicLink est déprécié, utilisez loginOrSignUp');
+        return loginOrSignUp(email, inviteCode);
     };
 
     // Fonction de déconnexion
@@ -168,7 +208,8 @@ export const AuthProvider = ({ children }) => {
         isLoading,
 
         // Actions
-        signInWithMagicLink,
+        loginOrSignUp,      // ✅ Nouvelle fonction principale
+        signInWithMagicLink, // Gardée pour compatibilité
         logout,
 
         // Helpers

@@ -3,10 +3,10 @@
 
 import React, { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { Mail, Loader, CheckCircle, AlertCircle, Info } from 'lucide-react';
+import { Mail, Loader, CheckCircle, AlertCircle, Info, Key } from 'lucide-react';
 
 const AuthForm = ({ darkMode = true }) => {
-    const { signInWithMagicLink } = useAuth();
+    const { loginOrSignUp } = useAuth(); // ✅ On utilise la nouvelle fonction
     const [email, setEmail] = useState('');
     const [inviteCode, setInviteCode] = useState('');
     const [loading, setLoading] = useState(false);
@@ -27,11 +27,12 @@ const AuthForm = ({ darkMode = true }) => {
         setMessage('');
         setError('');
 
-        const result = await signInWithMagicLink(email);
+        // ✅ On utilise loginOrSignUp avec email et code
+        const result = await loginOrSignUp(email, inviteCode);
 
         if (result.success) {
             setEmailSent(true);
-            setMessage('Lien de connexion envoyé ! Consultez votre boîte mail.');
+            setMessage(result.message || 'Lien de connexion envoyé ! Consultez votre boîte mail.');
         } else {
             setError(result.error || 'Une erreur est survenue. Réessayez plus tard.');
         }
@@ -101,7 +102,7 @@ const AuthForm = ({ darkMode = true }) => {
                                         autoComplete="email"
                                         required
                                         value={email}
-                                        onChange={(e) => setEmail(e.target.value)}
+                                        onChange={(e) => setEmail(e.target.value.toLowerCase())}
                                         className={`block w-full pl-10 pr-3 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${darkMode
                                                 ? 'bg-slate-800 border border-slate-700 text-white placeholder-gray-500'
                                                 : 'bg-gray-50 border border-gray-300 text-gray-900 placeholder-gray-400'
@@ -111,32 +112,44 @@ const AuthForm = ({ darkMode = true }) => {
                                 </div>
                             </div>
 
-                            {/* Champ code d'invitation (pour plus tard) */}
-                            {false && (
-                                <div>
-                                    <label htmlFor="inviteCode" className="sr-only">
-                                        Code d'invitation
-                                    </label>
+                            {/* Champ code d'invitation - VISIBLE */}
+                            <div>
+                                <label htmlFor="inviteCode" className="sr-only">
+                                    Code d'invitation
+                                </label>
+                                <div className="relative">
+                                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                        <Key className={`h-5 w-5 ${darkMode ? 'text-gray-500' : 'text-gray-400'
+                                            }`} />
+                                    </div>
                                     <input
                                         id="inviteCode"
                                         name="inviteCode"
                                         type="text"
                                         value={inviteCode}
-                                        onChange={(e) => setInviteCode(e.target.value)}
-                                        className={`block w-full px-3 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${darkMode
+                                        onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
+                                        className={`block w-full pl-10 pr-3 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${darkMode
                                                 ? 'bg-slate-800 border border-slate-700 text-white placeholder-gray-500'
                                                 : 'bg-gray-50 border border-gray-300 text-gray-900 placeholder-gray-400'
                                             }`}
-                                        placeholder="Code d'invitation (optionnel)"
+                                        placeholder="Code d'invitation (si nouveau)"
                                     />
                                 </div>
-                            )}
+                            </div>
 
-                            {/* Messages d'erreur */}
+                            {/* Messages d'erreur améliorés */}
                             {error && (
                                 <div className="flex items-start gap-3 p-4 rounded-lg bg-red-500/10 border border-red-500/20">
                                     <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
-                                    <p className="text-sm text-red-500">{error}</p>
+                                    <div className="flex-1">
+                                        <p className="text-sm text-red-500 font-medium">{error}</p>
+                                        {error.includes('invitation') && (
+                                            <p className="text-xs text-red-400 mt-1">
+                                                Les codes sont distribués lors d'événements spéciaux.
+                                                Suivez-nous pour ne pas les manquer !
+                                            </p>
+                                        )}
+                                    </div>
                                 </div>
                             )}
 
@@ -167,10 +180,11 @@ const AuthForm = ({ darkMode = true }) => {
                                     }`} />
                                 <div className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'
                                     }`}>
-                                    <p className="font-medium mb-1">Première connexion ?</p>
+                                    <p className="font-medium mb-1">Comment ça marche ?</p>
                                     <p className={darkMode ? 'text-gray-400' : 'text-gray-600'}>
-                                        Un code d'invitation est requis pour créer votre compte.
-                                        Suivez nos annonces pour en obtenir un !
+                                        • <strong>Première connexion :</strong> Entrez votre email + code d'invitation<br />
+                                        • <strong>Connexions suivantes :</strong> Email uniquement, pas besoin du code<br />
+                                        • Pas de mot de passe, juste un lien magique par email
                                     </p>
                                 </div>
                             </div>
