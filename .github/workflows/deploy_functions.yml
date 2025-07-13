@@ -1,25 +1,40 @@
+# Nom du workflow qui apparaîtra dans l'onglet "Actions" de GitHub
 name: Deploy Supabase Functions
 
+# Déclencheurs du workflow
 on:
+  # Se déclenche à chaque fois que tu pousses du code sur la branche 'main'
   push:
     branches:
-      - main # Se déclenche uniquement quand tu pousses sur la branche 'main'
+      - main
+  # Permet aussi de le lancer manuellement depuis l'interface de GitHub
   workflow_dispatch:
 
+# Définit les tâches à exécuter
 jobs:
+  # On définit une seule tâche nommée 'deploy-functions'
   deploy-functions:
+    # Le type de machine sur lequel la tâche va s'exécuter (un Linux standard)
     runs-on: ubuntu-latest
+
+    # Les étapes de la tâche
     steps:
+      # Étape 1 : Récupérer le code de ton dépôt
       - name: Checkout
         uses: actions/checkout@v3
 
+      # Étape 2 : Installer la CLI Supabase sur la machine virtuelle
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v1
         with:
           version: latest
 
+      # Étape 3 : Déployer la fonction 'auth-flow'
       - name: Deploy Function
+        # La commande qui sera exécutée dans le terminal de la machine virtuelle
         run: |
-          supabase functions deploy auth-flow --project-ref ${{ secrets.SUPABASE_PROJECT_ID }}
+          supabase functions deploy auth-flow --project-ref ${{ secrets.SUPABASE_PROJECT_ID }} --entrypoint "supabase/functions/auth-flow/index.js" --no-verify-jwt
+        # Les variables d'environnement nécessaires pour la commande
         env:
+          # On injecte le token d'accès depuis les secrets de GitHub
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
