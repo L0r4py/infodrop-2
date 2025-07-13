@@ -1,4 +1,4 @@
-// src/App.js - VERSION FINALE AVEC RECHERCHE
+// src/App.js - VERSION FINALE AVEC RECHERCHE ET AUTHENTIFICATION
 
 import React, { useState, useEffect, useCallback } from 'react';
 import './App.css';
@@ -50,6 +50,9 @@ import { grades } from './data/rewards';
 // Icônes
 import { RefreshCw, Wifi, WifiOff } from 'lucide-react';
 
+// ✅ NOUVEL IMPORT - Formulaire d'authentification
+import AuthForm from './components/auth/AuthForm';
+
 // ❌ PAS DE fetchGlobalStats ICI - Elle est dans le hook
 
 // 🆕 FONCTION DE NETTOYAGE DES DONNÉES
@@ -71,7 +74,28 @@ const cleanOrientationCounts = (counts) => {
   return cleaned;
 };
 
-// Composant principal de l'application
+// ✅ NOUVEAU - Composant de chargement élégant
+const LoadingScreen = ({ darkMode }) => (
+  <div className={`min-h-screen flex items-center justify-center ${darkMode ? 'bg-slate-950' : 'bg-gray-50'
+    }`}>
+    <div className="text-center">
+      <div className={`inline-flex items-center justify-center w-20 h-20 rounded-2xl mb-4 ${darkMode ? 'bg-slate-800' : 'bg-white shadow-lg'
+        } animate-pulse`}>
+        <span className="text-4xl">📰</span>
+      </div>
+      <h1 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'
+        }`}>
+        INFODROP
+      </h1>
+      <p className={`mt-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'
+        }`}>
+        Chargement en cours...
+      </p>
+    </div>
+  </div>
+);
+
+// Composant principal de l'application (inchangé)
 const InfodropApp = () => {
   const { darkMode } = useTheme();
   const { user, isAdmin } = useAuth();
@@ -403,16 +427,37 @@ const InfodropApp = () => {
   );
 };
 
-// Composant racine avec les providers
+// ✅ NOUVEAU - Composant intermédiaire qui gère l'affichage conditionnel
+const MainApp = () => {
+  const { isAuthenticated, isLoading } = useAuth();
+  const { darkMode } = useTheme();
+
+  // Afficher l'écran de chargement pendant la vérification de session
+  if (isLoading) {
+    return <LoadingScreen darkMode={darkMode} />;
+  }
+
+  // Afficher le formulaire de connexion si non authentifié
+  if (!isAuthenticated) {
+    return <AuthForm darkMode={darkMode} />;
+  }
+
+  // Afficher l'application principale si authentifié
+  return (
+    <GameProvider>
+      <InfodropApp />
+      <Analytics />
+      <SpeedInsights />
+    </GameProvider>
+  );
+};
+
+// ✅ MODIFIÉ - Composant racine avec les providers
 const App = () => {
   return (
     <AuthProvider>
       <ThemeProvider>
-        <GameProvider>
-          <InfodropApp />
-          <Analytics />
-          <SpeedInsights />
-        </GameProvider>
+        <MainApp />
       </ThemeProvider>
     </AuthProvider>
   );

@@ -1,6 +1,8 @@
 // src/contexts/AuthContext.js
+// Version finale, connectée à Supabase
 
 import React, { createContext, useState, useContext, useEffect } from 'react';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 // Créer le contexte
 const AuthContext = createContext(null);
@@ -16,73 +18,162 @@ export const useAuth = () => {
 
 // Provider du contexte
 export const AuthProvider = ({ children }) => {
-    const [user, setUser] = useState(() => {
-        // Récupérer l'utilisateur depuis le localStorage au chargement
-        const savedUser = localStorage.getItem('user');
-        return savedUser ? JSON.parse(savedUser) : null;
-    });
+    const [user, setUser] = useState(null);
+    const [session, setSession] = useState(null);
+    const [isAdmin, setIsAdmin] = useState(false);
+    const [isLoading, setIsLoading] = useState(true); // Commence à true
 
-    const [isAdmin, setIsAdmin] = useState(true); // Pour la démo
-    const [isAuthenticated, setIsAuthenticated] = useState(!!user);
-    const [isLoading, setIsLoading] = useState(false);
-
-    // Sauvegarder l'utilisateur dans le localStorage à chaque changement
+    // Écouter les changements d'état de l'authentification
     useEffect(() => {
-        if (user) {
-            localStorage.setItem('user', JSON.stringify(user));
-        } else {
-            localStorage.removeItem('user');
+        if (!isSupabaseConfigured()) {
+            console.warn('⚠️ Supabase non configuré - Mode démo activé');
+            setIsLoading(false);
+            return;
         }
-    }, [user]);
 
-    // Fonction de connexion
-    const login = async (email, referralCode) => {
+        // 1. Récupérer la session existante au chargement
+        const initializeAuth = async () => {
+            try {
+                const { data: { session }, error } = await supabase.auth.getSession();
+
+                if (error) {
+                    console.error('Erreur récupération session:', error);
+                } else {
+                    setSession(session);
+                    const currentUser = session?.user;
+                    setUser(currentUser ?? null);
+                    // Vérifier si l'utilisateur est admin
+                    setIsAdmin(currentUser?.email === 'l0r4.py@gmail.com');
+                }
+            } catch (error) {
+                console.error('Erreur initialisation auth:', error);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        initializeAuth();
+
+        // 2. Écouter les changements en temps réel (connexion, déconnexion)
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(
+            async (event, session) => {
+                console.log('🔄 Auth state change:', event);
+
+                setSession(session);
+                const currentUser = session?.user;
+                setUser(currentUser ?? null);
+                setIsAdmin(currentUser?.email === 'l0r4.py@gmail.com');
+
+                // Gérer les différents événements
+                switch (event) {
+                    case 'SIGNED_IN':
+                        console.log('✅ Utilisateur connecté:', currentUser?.email);
+                        break;
+                    case 'SIGNED_OUT':
+                        console.log('👋 Utilisateur déconnecté');
+                        break;
+                    case 'TOKEN_REFRESHED':
+                        console.log('🔄 Token rafraîchi');
+                        break;
+                    case 'USER_UPDATED':
+                        console.log('👤 Profil utilisateur mis à jour');
+                        break;
+                }
+
+                setIsLoading(false);
+            }
+        );
+
+        // Nettoyage de l'écouteur
+        return () => {
+            subscription?.unsubscribe();
+        };
+    }, []);
+
+    // Fonction de connexion avec lien magique
+    const signInWithMagicLink = async (email) => {
+        if (!isSupabaseConfigured()) {
+            throw new Error('Supabase non configuré');
+        }
+
         setIsLoading(true);
+
         try {
-            // Simuler un appel API
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            const { data, error } = await supabase.auth.signInWithOtp({
+                email: email,
+                options: {
+                    // URL de redirection après connexion
+                    emailRedirectTo: window.location.origin,
+                    // Données supplémentaires (optionnel)
+                    data: {
+                        source: 'infodrop'
+                    }
+                }
+            });
 
-            const newUser = {
-                id: Date.now(),
-                email,
-                referralCode: referralCode || 'NYO-BX89',
-                referredBy: '10r4.py@gmail.com',
-                createdAt: new Date().toISOString()
-            };
+            if (error) throw error;
 
-            setUser(newUser);
-            setIsAuthenticated(true);
+            console.log('📧 Lien magique envoyé à:', email);
             return { success: true };
+
         } catch (error) {
-            return { success: false, error: error.message };
+            console.error("❌ Erreur lors de l'envoi du lien magique:", error);
+            return {
+                success: false,
+                error: error.message || "Erreur lors de l'envoi du lien"
+            };
         } finally {
             setIsLoading(false);
         }
     };
 
     // Fonction de déconnexion
-    const logout = () => {
-        setUser(null);
-        setIsAuthenticated(false);
-        setIsAdmin(false);
-        localStorage.removeItem('user');
-        localStorage.removeItem('userStats');
+    const logout = async () => {
+        if (!isSupabaseConfigured()) {
+            console.warn('⚠️ Supabase non configuré');
+            return;
+        }
+
+        try {
+            const { error } = await supabase.auth.signOut();
+
+            if (error) {
+                console.error('❌ Erreur déconnexion:', error);
+                throw error;
+            }
+
+            // Réinitialiser les états locaux
+            setUser(null);
+            setSession(null);
+            setIsAdmin(false);
+
+            console.log('👋 Déconnexion réussie');
+
+        } catch (error) {
+            console.error('Erreur lors de la déconnexion:', error);
+            // Forcer la réinitialisation même en cas d'erreur
+            setUser(null);
+            setSession(null);
+            setIsAdmin(false);
+        }
     };
 
-    // Fonction pour mettre à jour le profil utilisateur
-    const updateProfile = (updates) => {
-        setUser(prev => ({ ...prev, ...updates }));
-    };
-
+    // Valeur du contexte
     const value = {
+        // États
         user,
+        session,
         isAdmin,
-        isAuthenticated,
+        isAuthenticated: !!user,
         isLoading,
-        login,
+
+        // Actions
+        signInWithMagicLink,
         logout,
-        updateProfile,
-        setIsAdmin
+
+        // Helpers
+        userEmail: user?.email || null,
+        userId: user?.id || null
     };
 
     return (
