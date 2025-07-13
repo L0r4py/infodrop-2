@@ -140,7 +140,8 @@ export const AuthProvider = ({ children }) => {
                         emailRedirectTo: window.location.origin,
                         data: {
                             invite_code: normalizedCode // Métadonnée optionnelle
-                        }
+                        },
+                        shouldCreateUser: true // Force la création si l'utilisateur n'existe pas
                     }
                 });
 
