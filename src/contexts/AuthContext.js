@@ -9,7 +9,7 @@ const ADMIN_EMAIL = process.env.REACT_APP_ADMIN_EMAIL?.toLowerCase();
 
 // Log pour vérifier que la variable est bien chargée (à retirer en production)
 if (process.env.NODE_ENV === 'development') {
-    console.log('🔧 Admin email configuré:', ADMIN_EMAIL);
+    console.log('Admin email configuré:', ADMIN_EMAIL);
 }
 
 export const useAuth = () => {
@@ -28,13 +28,13 @@ export const AuthProvider = ({ children }) => {
 
     useEffect(() => {
         if (!isSupabaseConfigured()) {
-            console.warn('⚠️ Supabase non configuré - Mode démo activé');
+            console.warn('Supabase non configuré - Mode démo activé');
             setIsLoading(false);
             return;
         }
 
         const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-            console.log('🔄 Auth state change:', event);
+            console.log('Auth state change:', event);
             setSession(session);
             const currentUser = session?.user ?? null;
             setUser(currentUser);
@@ -74,7 +74,7 @@ export const AuthProvider = ({ children }) => {
                     last_used: new Date().toISOString()
                 }).eq('code', pendingCode);
 
-                console.log('✅ Code marqué comme utilisé:', pendingCode);
+                console.log('Code marqué comme utilisé:', pendingCode);
             }
         } catch (error) {
             console.error('Erreur lors de la mise à jour du code:', error);
@@ -94,20 +94,21 @@ export const AuthProvider = ({ children }) => {
 
             // CAS 1 : L'admin se connecte toujours avec un lien magique
             if (normalizedEmail === ADMIN_EMAIL) {
-                console.log("🔑 Connexion admin...");
-                const { error } = await supabase.auth.signInWithOtp({
+                console.log("Connexion admin pour:", normalizedEmail);
+                const { data, error } = await supabase.auth.signInWithOtp({
                     email: normalizedEmail,
                     options: {
                         emailRedirectTo: window.location.origin
                     }
                 });
+                console.log("Résultat signInWithOtp:", { data, error });
                 if (error) throw error;
                 return { success: true, message: "Lien de connexion envoyé à l'admin." };
             }
 
             // CAS 2 : Utilisateur avec code d'invitation
             if (normalizedCode) {
-                console.log("🔍 Vérification du code d'invitation...");
+                console.log("Vérification du code d'invitation:", normalizedCode);
 
                 // Vérifier le code dans la table 'referral_codes'
                 const { data: codeData, error: codeError } = await supabase
@@ -132,8 +133,8 @@ export const AuthProvider = ({ children }) => {
                 localStorage.setItem('pending_invite_code', normalizedCode);
 
                 // Envoyer le magic link (créera le compte si nécessaire)
-                console.log("📧 Envoi du magic link...");
-                const { error: magicLinkError } = await supabase.auth.signInWithOtp({
+                console.log("Envoi du magic link pour:", normalizedEmail);
+                const { data, error: magicLinkError } = await supabase.auth.signInWithOtp({
                     email: normalizedEmail,
                     options: {
                         emailRedirectTo: window.location.origin,
@@ -142,6 +143,8 @@ export const AuthProvider = ({ children }) => {
                         }
                     }
                 });
+
+                console.log("Résultat signInWithOtp avec code:", { data, error: magicLinkError });
 
                 if (magicLinkError) {
                     localStorage.removeItem('pending_invite_code');
@@ -155,14 +158,16 @@ export const AuthProvider = ({ children }) => {
 
             } else {
                 // CAS 3 : Connexion simple sans code
-                console.log("📧 Tentative de connexion simple...");
+                console.log("Tentative de connexion simple pour:", normalizedEmail);
 
-                const { error } = await supabase.auth.signInWithOtp({
+                const { data, error } = await supabase.auth.signInWithOtp({
                     email: normalizedEmail,
                     options: {
                         emailRedirectTo: window.location.origin
                     }
                 });
+
+                console.log("Résultat signInWithOtp sans code:", { data, error });
 
                 if (error) {
                     // Si l'erreur indique que l'utilisateur n'existe pas
@@ -179,7 +184,7 @@ export const AuthProvider = ({ children }) => {
             }
 
         } catch (error) {
-            console.error("❌ Erreur Auth:", error);
+            console.error("Erreur Auth:", error);
             return {
                 success: false,
                 error: error.message || "Une erreur est survenue"
@@ -197,7 +202,7 @@ export const AuthProvider = ({ children }) => {
 
     // Fonction de connexion avec lien magique (ancienne, on la garde pour compatibilité)
     const signInWithMagicLink = async (email, inviteCode = '') => {
-        console.warn('⚠️ signInWithMagicLink est déprécié, utilisez loginOrSignUp');
+        console.warn('signInWithMagicLink est déprécié, utilisez loginOrSignUp');
         return loginOrSignUp(email, inviteCode);
     };
 
