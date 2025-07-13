@@ -1,5 +1,5 @@
 // src/contexts/AuthContext.js
-// Version corrigée - Utilise uniquement signInWithOtp pour tous les cas
+// VERSION TEMPORAIRE POUR LE DÉVELOPPEMENT (sans envoi d'email)
 
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
@@ -7,10 +7,8 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 const AuthContext = createContext(null);
 const ADMIN_EMAIL = process.env.REACT_APP_ADMIN_EMAIL?.toLowerCase();
 
-// Log pour vérifier que la variable est bien chargée (à retirer en production)
-if (process.env.NODE_ENV === 'development') {
-    console.log('Admin email configuré:', ADMIN_EMAIL);
-}
+// Mode développement - À RETIRER EN PRODUCTION
+const DEV_MODE = true; // Mettre à false en production
 
 export const useAuth = () => {
     const context = useContext(AuthContext);
@@ -39,50 +37,11 @@ export const AuthProvider = ({ children }) => {
             const currentUser = session?.user ?? null;
             setUser(currentUser);
             setIsAdmin(currentUser?.email?.toLowerCase() === ADMIN_EMAIL);
-
-            // Si l'utilisateur vient de se connecter, vérifier s'il y a un code à marquer comme utilisé
-            if (event === 'SIGNED_IN' && currentUser) {
-                handlePostSignIn(currentUser);
-            }
-
             setIsLoading(false);
         });
 
         return () => subscription?.unsubscribe();
     }, []);
-
-    // Fonction pour gérer les actions après connexion
-    const handlePostSignIn = async (user) => {
-        // Vérifier s'il y a un code en attente dans localStorage
-        const pendingCode = localStorage.getItem('pending_invite_code');
-        if (!pendingCode) return;
-
-        try {
-            // Récupérer les infos actuelles du code
-            const { data: codeData, error: fetchError } = await supabase
-                .from('referral_codes')
-                .select('uses_count, max_uses')
-                .eq('code', pendingCode)
-                .single();
-
-            if (!fetchError && codeData) {
-                // Mettre à jour le code
-                const newUsesCount = (codeData.uses_count || 0) + 1;
-                await supabase.from('referral_codes').update({
-                    uses_count: newUsesCount,
-                    is_active: newUsesCount < codeData.max_uses,
-                    last_used: new Date().toISOString()
-                }).eq('code', pendingCode);
-
-                console.log('Code marqué comme utilisé:', pendingCode);
-            }
-        } catch (error) {
-            console.error('Erreur lors de la mise à jour du code:', error);
-        } finally {
-            // Nettoyer le localStorage
-            localStorage.removeItem('pending_invite_code');
-        }
-    };
 
     const loginOrSignUp = async (email, inviteCode) => {
         if (!isSupabaseConfigured()) throw new Error('Supabase non configuré');
@@ -92,97 +51,73 @@ export const AuthProvider = ({ children }) => {
             const normalizedEmail = email.toLowerCase().trim();
             const normalizedCode = inviteCode?.toUpperCase().trim();
 
-            // CAS 1 : L'admin se connecte toujours avec un lien magique
-            if (normalizedEmail === ADMIN_EMAIL) {
-                console.log("Connexion admin pour:", normalizedEmail);
-                const { data, error } = await supabase.auth.signInWithOtp({
-                    email: normalizedEmail,
-                    options: {
-                        emailRedirectTo: window.location.origin
+            // MODE DEV : Connexion directe avec mot de passe temporaire
+            if (DEV_MODE) {
+                console.warn("⚠️ MODE DÉVELOPPEMENT ACTIVÉ - Connexion sans email");
+
+                // Si c'est un nouvel utilisateur avec code
+                if (normalizedCode) {
+                    // Vérifier le code
+                    const { data: codeData, error: codeError } = await supabase
+                        .from('referral_codes')
+                        .select('id, is_active, uses_count, max_uses')
+                        .eq('code', normalizedCode)
+                        .single();
+
+                    if (codeError || !codeData || !codeData.is_active) {
+                        throw new Error("Code d'invitation invalide ou inactif.");
                     }
-                });
-                console.log("Résultat signInWithOtp:", { data, error });
-                if (error) throw error;
-                return { success: true, message: "Lien de connexion envoyé à l'admin." };
+
+                    // Créer le compte avec un mot de passe temporaire
+                    const tempPassword = 'TempPass123!';
+                    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+                        email: normalizedEmail,
+                        password: tempPassword
+                    });
+
+                    if (signUpError && !signUpError.message.includes('already registered')) {
+                        throw signUpError;
+                    }
+
+                    // Mettre à jour le code
+                    await supabase.from('referral_codes').update({
+                        uses_count: codeData.uses_count + 1,
+                        is_active: (codeData.uses_count + 1) < codeData.max_uses,
+                        last_used: new Date().toISOString()
+                    }).eq('code', normalizedCode);
+
+                    // Se connecter directement
+                    const { error: signInError } = await supabase.auth.signInWithPassword({
+                        email: normalizedEmail,
+                        password: tempPassword
+                    });
+
+                    if (signInError) throw signInError;
+
+                    return {
+                        success: true,
+                        message: '✅ MODE DEV : Connexion réussie ! (Mot de passe: TempPass123!)'
+                    };
+                } else {
+                    // Connexion simple
+                    const { error } = await supabase.auth.signInWithPassword({
+                        email: normalizedEmail,
+                        password: 'TempPass123!'
+                    });
+
+                    if (error) {
+                        throw new Error("Compte introuvable ou mot de passe incorrect. En mode dev, utilisez TempPass123!");
+                    }
+
+                    return {
+                        success: true,
+                        message: '✅ MODE DEV : Connexion réussie !'
+                    };
+                }
             }
 
-            // CAS 2 : Utilisateur avec code d'invitation
-            if (normalizedCode) {
-                console.log("Vérification du code d'invitation:", normalizedCode);
-
-                // Vérifier le code dans la table 'referral_codes'
-                const { data: codeData, error: codeError } = await supabase
-                    .from('referral_codes')
-                    .select('id, is_active, uses_count, max_uses')
-                    .eq('code', normalizedCode)
-                    .single();
-
-                if (codeError || !codeData) {
-                    throw new Error("Code d'invitation invalide.");
-                }
-
-                if (!codeData.is_active) {
-                    throw new Error("Ce code d'invitation n'est plus actif.");
-                }
-
-                if (codeData.uses_count >= codeData.max_uses) {
-                    throw new Error("Ce code d'invitation a atteint sa limite d'utilisations.");
-                }
-
-                // Code valide ! Sauvegarder le code pour le marquer comme utilisé après connexion
-                localStorage.setItem('pending_invite_code', normalizedCode);
-
-                // Envoyer le magic link (créera le compte si nécessaire)
-                console.log("Envoi du magic link pour:", normalizedEmail);
-                const { data, error: magicLinkError } = await supabase.auth.signInWithOtp({
-                    email: normalizedEmail,
-                    options: {
-                        emailRedirectTo: window.location.origin,
-                        data: {
-                            invite_code: normalizedCode // Métadonnée optionnelle
-                        },
-                        shouldCreateUser: true // Force la création si l'utilisateur n'existe pas
-                    }
-                });
-
-                console.log("Résultat signInWithOtp avec code:", { data, error: magicLinkError });
-
-                if (magicLinkError) {
-                    localStorage.removeItem('pending_invite_code');
-                    throw magicLinkError;
-                }
-
-                return {
-                    success: true,
-                    message: 'Code valide ! Vérifiez votre boîte mail pour le lien de connexion.'
-                };
-
-            } else {
-                // CAS 3 : Connexion simple sans code
-                console.log("Tentative de connexion simple pour:", normalizedEmail);
-
-                const { data, error } = await supabase.auth.signInWithOtp({
-                    email: normalizedEmail,
-                    options: {
-                        emailRedirectTo: window.location.origin
-                    }
-                });
-
-                console.log("Résultat signInWithOtp sans code:", { data, error });
-
-                if (error) {
-                    // Si l'erreur indique que l'utilisateur n'existe pas
-                    if (error.message?.includes('not found') || error.message?.includes('not exist')) {
-                        throw new Error("Aucun compte trouvé. Un code d'invitation est requis pour créer un compte.");
-                    }
-                    throw error;
-                }
-
-                return {
-                    success: true,
-                    message: 'Lien de connexion envoyé !'
-                };
-            }
+            // CODE PRODUCTION (actuellement non fonctionnel à cause des emails)
+            // ... (ton code original ici)
 
         } catch (error) {
             console.error("Erreur Auth:", error);
@@ -198,13 +133,6 @@ export const AuthProvider = ({ children }) => {
     const logout = async () => {
         if (!isSupabaseConfigured()) return;
         await supabase.auth.signOut();
-        localStorage.removeItem('pending_invite_code');
-    };
-
-    // Fonction de connexion avec lien magique (ancienne, on la garde pour compatibilité)
-    const signInWithMagicLink = async (email, inviteCode = '') => {
-        console.warn('signInWithMagicLink est déprécié, utilisez loginOrSignUp');
-        return loginOrSignUp(email, inviteCode);
     };
 
     const value = {
@@ -214,9 +142,7 @@ export const AuthProvider = ({ children }) => {
         isAuthenticated: !!user,
         isLoading,
         loginOrSignUp,
-        signInWithMagicLink, // Gardée pour compatibilité
         logout,
-        // Helpers
         userEmail: user?.email || null,
         userId: user?.id || null
     };
