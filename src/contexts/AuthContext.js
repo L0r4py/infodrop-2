@@ -1,37 +1,20 @@
 // src/contexts/AuthContext.js
-// Version finale, connectée à Supabase
+// Version finale, SANS Edge Function. Toute la logique est ici.
 
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
-// Créer le contexte
 const AuthContext = createContext(null);
+const ADMIN_EMAIL = process.env.REACT_APP_ADMIN_EMAIL?.toLowerCase();
 
-// Email admin depuis les variables d'environnement
-const ADMIN_EMAIL = process.env.REACT_APP_ADMIN_EMAIL?.toLowerCase() || 'admin@example.com';
+export const useAuth = () => useContext(AuthContext);
 
-// Log pour vérifier que la variable est bien chargée (à retirer en production)
-if (process.env.NODE_ENV === 'development') {
-    console.log('🔧 Admin email configuré:', ADMIN_EMAIL);
-}
-
-// Hook personnalisé pour utiliser le contexte
-export const useAuth = () => {
-    const context = useContext(AuthContext);
-    if (!context) {
-        throw new Error('useAuth doit être utilisé dans un AuthProvider');
-    }
-    return context;
-};
-
-// Provider du contexte
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
     const [session, setSession] = useState(null);
     const [isAdmin, setIsAdmin] = useState(false);
-    const [isLoading, setIsLoading] = useState(true); // Commence à true
+    const [isLoading, setIsLoading] = useState(true);
 
-    // Écouter les changements d'état de l'authentification
     useEffect(() => {
         if (!isSupabaseConfigured()) {
             console.warn('⚠️ Supabase non configuré - Mode démo activé');
@@ -98,63 +81,58 @@ export const AuthProvider = ({ children }) => {
         };
     }, []);
 
-    // ✅ NOUVELLE FONCTION "CERVEAU" - loginOrSignUp
+    // ✅ LA NOUVELLE FONCTION "CERVEAU", 100% CLIENT-SIDE
     const loginOrSignUp = async (email, inviteCode) => {
         if (!isSupabaseConfigured()) throw new Error('Supabase non configuré');
-
         setIsLoading(true);
         try {
             const normalizedEmail = email.toLowerCase();
-            const normalizedCode = inviteCode?.toUpperCase().trim() || '';
+            const normalizedCode = inviteCode?.toUpperCase().trim();
 
-            // CAS 1 : L'utilisateur est l'admin
+            // CAS 1 : L'admin se connecte
             if (normalizedEmail === ADMIN_EMAIL) {
-                console.log("🔑 Connexion de l'admin...");
-                const { error } = await supabase.auth.signInWithOtp({
-                    email: normalizedEmail,
-                    options: {
-                        emailRedirectTo: window.location.origin
-                    }
-                });
+                const { error } = await supabase.auth.signInWithOtp({ email: normalizedEmail });
                 if (error) throw error;
                 return { success: true, message: "Lien de connexion envoyé à l'admin." };
             }
 
-            // Pour les autres, on appelle la fonction Edge
-            console.log("🔍 Vérification de l'utilisateur...");
+            // Pour savoir si un utilisateur existe, la seule façon sécurisée est de
+            // lui envoyer un lien. S'il existe, il se connecte. S'il n'existe pas,
+            // il sera créé, mais il ne pourra pas aller plus loin sans code.
+            // ON SIMPLIFIE :
 
-            const { data, error } = await supabase.functions.invoke('auth-flow', {
-                body: {
-                    email: normalizedEmail,
-                    inviteCode: normalizedCode
-                },
-            });
+            // Si l'utilisateur fournit un code...
+            if (normalizedCode) {
+                // On vérifie si le code est valide
+                const { data: codeData, error: codeError } = await supabase
+                    .from('referral_codes')
+                    .select('*')
+                    .eq('code', normalizedCode)
+                    .single();
 
-            if (error) throw error;
-            if (!data.success) throw new Error(data.message);
+                if (codeError || !codeData) throw new Error("Code d'invitation invalide.");
+                if (!codeData.is_active) throw new Error("Ce code d'invitation a déjà été utilisé.");
 
-            // Si la fonction serveur demande d'envoyer le magic link
-            if (data.action === 'send_magic_link') {
-                console.log("📧 Envoi du lien magique...");
-                const { error: linkError } = await supabase.auth.signInWithOtp({
-                    email: normalizedEmail,
-                    options: {
-                        emailRedirectTo: window.location.origin
-                    }
-                });
+                // Le code est bon ! On envoie le lien magique.
+                // Supabase va créer le compte s'il n'existe pas.
+                const { error: magicLinkError } = await supabase.auth.signInWithOtp({ email: normalizedEmail });
+                if (magicLinkError) throw magicLinkError;
 
-                if (linkError) throw linkError;
+                // C'est ici qu'on marquera le code comme utilisé, une fois l'utilisateur connecté.
 
-                return {
-                    success: true,
-                    message: "Lien de connexion envoyé ! Consultez votre boîte mail."
-                };
+                return { success: true, message: 'Code valide ! Lien de connexion envoyé.' };
+            } else {
+                // Pas de code fourni. On tente une connexion simple.
+                // Si l'utilisateur n'existe pas, Supabase ne créera PAS de compte car
+                // on a activé la protection "Allow new users to sign up" DANS la config Supabase.
+                // Il faut s'assurer que cette option est bien DÉCOCHÉE.
+                const { error } = await supabase.auth.signInWithOtp({ email: normalizedEmail });
+                if (error) throw error;
+                return { success: true, message: 'Lien de connexion envoyé.' };
             }
 
-            return { success: true, message: data.message };
-
         } catch (error) {
-            console.error("❌ Erreur Auth:", error);
+            console.error("Erreur Auth:", error);
             return { success: false, error: error.message };
         } finally {
             setIsLoading(false);
