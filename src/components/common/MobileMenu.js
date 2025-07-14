@@ -11,104 +11,137 @@ import {
     LogOut,
 } from 'lucide-react';
 
-const MobileMenu = (props) => {
-    const { logout } = useAuth(); // ✅ Récupération de la fonction logout
+const MobileMenu = ({
+    isOpen,
+    onClose,
+    user,
+    handleSettingsClick,
+    handleParrainageClick,
+    handleRewardsClick,
+    handleDonateClick,
+    handleAboutClick,
+    handleStatsClick
+}) => {
+    // ✅ Récupération directe de la fonction logout depuis le contexte
+    const { logout } = useAuth();
 
-    if (!props.isOpen) return null;
-
-    const menuClass = props.darkMode ? 'bg-slate-800' : 'bg-white';
-
-    const handleBackdropClick = () => props.onClose();
-    const handleMenuClick = (e) => e.stopPropagation();
+    if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black/50 z-50" onClick={handleBackdropClick}>
+        <>
+            {/* Overlay sombre */}
             <div
-                className={`absolute right-0 top-0 bottom-0 w-80 ${menuClass} shadow-2xl p-6`}
-                onClick={handleMenuClick}
-            >
-                <h2 className="text-2xl font-bold mb-6">Menu</h2>
+                className="fixed inset-0 bg-black bg-opacity-50 z-40"
+                onClick={onClose}
+            />
 
-                <div className="space-y-4">
-                    <button
-                        onClick={() => {
-                            props.onShow360();
-                            props.onClose();
-                        }}
-                        className="w-full p-4 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold flex items-center gap-2"
-                    >
-                        <Activity className="w-5 h-5" />
-                        INFODROP 360
-                    </button>
+            {/* Menu mobile */}
+            <div className={`fixed right-0 top-0 h-full w-64 bg-white dark:bg-gray-800 shadow-lg z-50 transform transition-transform duration-300 ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+                <div className="p-4">
+                    {/* En-tête avec infos utilisateur */}
+                    <div className="mb-6 pb-4 border-b dark:border-gray-700">
+                        <div className="flex items-center justify-between mb-2">
+                            <h3 className="font-semibold text-gray-900 dark:text-white">
+                                {user?.username || 'Utilisateur'}
+                            </h3>
+                            <button
+                                onClick={onClose}
+                                className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                            >
+                                ✕
+                            </button>
+                        </div>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">
+                            {user?.email}
+                        </p>
+                    </div>
 
-                    {props.isAdmin && (
+                    {/* Menu items */}
+                    <nav className="space-y-2">
                         <button
                             onClick={() => {
-                                props.onShowAdmin();
-                                props.onClose();
+                                handleStatsClick();
+                                onClose();
                             }}
-                            className="w-full p-4 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-white font-bold flex items-center gap-2"
+                            className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                         >
-                            <Settings className="w-5 h-5" />
-                            Panel Admin
+                            <Activity size={20} />
+                            <span>Mes Statistiques</span>
                         </button>
-                    )}
 
-                    <button
-                        onClick={() => {
-                            props.onShowReferral();
-                            props.onClose();
-                        }}
-                        className="w-full p-4 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-bold flex items-center gap-2"
-                    >
-                        <UserPlus className="w-5 h-5" />
-                        Code de parrainage
-                    </button>
+                        <button
+                            onClick={() => {
+                                handleSettingsClick();
+                                onClose();
+                            }}
+                            className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                        >
+                            <Settings size={20} />
+                            <span>Paramètres</span>
+                        </button>
 
-                    <button
-                        onClick={() => {
-                            props.onShowBadgeShop();
-                            props.onClose();
-                        }}
-                        className="w-full p-4 rounded-xl bg-gradient-to-r from-yellow-500 to-orange-500 text-white font-bold flex items-center gap-2"
-                    >
-                        <Gift className="w-5 h-5" />
-                        Boutique et Récompenses
-                    </button>
-                    <a
-                        href="https://buy.stripe.com/7sYcN6fh6ez47u5ejh"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="w-full p-4 rounded-xl bg-gradient-to-r from-green-500 to-emerald-500 text-white font-bold flex items-center gap-2 block text-center"
-                    >
-                        <CircleDollarSign className="w-5 h-5" />
-                        Soutenir
-                    </a>
+                        <button
+                            onClick={() => {
+                                handleParrainageClick();
+                                onClose();
+                            }}
+                            className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                        >
+                            <UserPlus size={20} />
+                            <span>Parrainer</span>
+                        </button>
 
-                    <button
-                        onClick={() => {
-                            props.onShowAbout();
-                            props.onClose();
-                        }}
-                        className="w-full p-4 rounded-xl bg-gradient-to-r from-blue-500 to-indigo-500 text-white font-bold flex items-center gap-2"
-                    >
-                        <Info className="w-5 h-5" />
-                        À propos
-                    </button>
+                        <button
+                            onClick={() => {
+                                handleRewardsClick();
+                                onClose();
+                            }}
+                            className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                        >
+                            <Gift size={20} />
+                            <span>Récompenses</span>
+                        </button>
 
-                    <button
-                        onClick={() => {
-                            logout(); // ✅ Appel de la vraie fonction logout
-                            props.onClose();
-                        }}
-                        className="w-full p-4 rounded-xl bg-gradient-to-r from-red-500 to-pink-500 text-white font-bold flex items-center gap-2"
-                    >
-                        <LogOut className="w-5 h-5" />
-                        Déconnexion
-                    </button>
+                        <button
+                            onClick={() => {
+                                handleDonateClick();
+                                onClose();
+                            }}
+                            className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                        >
+                            <CircleDollarSign size={20} />
+                            <span>Faire un don</span>
+                        </button>
+
+                        <button
+                            onClick={() => {
+                                handleAboutClick();
+                                onClose();
+                            }}
+                            className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                        >
+                            <Info size={20} />
+                            <span>À propos</span>
+                        </button>
+
+                        {/* Séparateur */}
+                        <div className="my-4 border-t dark:border-gray-700" />
+
+                        {/* Bouton de déconnexion */}
+                        <button
+                            onClick={() => {
+                                logout(); // ✅ Appel direct de la fonction logout du contexte
+                                onClose();
+                            }}
+                            className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400 transition-colors"
+                        >
+                            <LogOut size={20} />
+                            <span>Déconnexion</span>
+                        </button>
+                    </nav>
                 </div>
             </div>
-        </div>
+        </>
     );
 };
 
