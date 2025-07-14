@@ -429,11 +429,11 @@ const InfodropApp = () => {
 
 // ✅ NOUVEAU - Composant intermédiaire qui gère l'affichage conditionnel
 const MainApp = () => {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, sessionLoaded } = useAuth(); // ✅ Utiliser sessionLoaded comme V1
   const { darkMode } = useTheme();
 
   // Afficher l'écran de chargement pendant la vérification de session
-  if (isLoading) {
+  if (!sessionLoaded) {
     return <LoadingScreen darkMode={darkMode} />;
   }
 

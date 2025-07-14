@@ -1,17 +1,17 @@
 // src/components/auth/AuthForm.js
-// Formulaire de connexion par lien magique
+// Formulaire de connexion adapté pour fonctionner comme la V1
 
 import React, { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { Mail, Loader, CheckCircle, AlertCircle, Info, Key } from 'lucide-react';
 
 const AuthForm = ({ darkMode = true }) => {
-    const { loginOrSignUp } = useAuth(); // ✅ On utilise la nouvelle fonction
+    const { login } = useAuth(); // ✅ On utilise login comme dans V1
     const [email, setEmail] = useState('');
     const [inviteCode, setInviteCode] = useState('');
     const [loading, setLoading] = useState(false);
     const [message, setMessage] = useState('');
-    const [error, setError] = useState('');
+    const [messageType, setMessageType] = useState('');
     const [emailSent, setEmailSent] = useState(false);
 
     const handleSubmit = async (e) => {
@@ -19,22 +19,24 @@ const AuthForm = ({ darkMode = true }) => {
 
         // Validation basique
         if (!email || !email.includes('@')) {
-            setError('Veuillez entrer une adresse email valide');
+            setMessage('Veuillez entrer une adresse email valide');
+            setMessageType('error');
             return;
         }
 
         setLoading(true);
         setMessage('');
-        setError('');
 
-        // ✅ On utilise loginOrSignUp avec email et code
-        const result = await loginOrSignUp(email, inviteCode);
+        // ✅ On utilise login avec email et code (comme dans V1)
+        const result = await login(email.toLowerCase(), inviteCode);
 
         if (result.success) {
             setEmailSent(true);
-            setMessage(result.message || 'Lien de connexion envoyé ! Consultez votre boîte mail.');
+            setMessage(result.message);
+            setMessageType('success');
         } else {
-            setError(result.error || 'Une erreur est survenue. Réessayez plus tard.');
+            setMessage(result.error);
+            setMessageType('error');
         }
 
         setLoading(false);
@@ -45,123 +47,63 @@ const AuthForm = ({ darkMode = true }) => {
         setInviteCode('');
         setEmailSent(false);
         setMessage('');
-        setError('');
+        setMessageType('');
     };
 
     return (
-        <div className={`min-h-screen flex items-center justify-center ${darkMode ? 'bg-slate-950' : 'bg-gray-50'
-            }`}>
+        <div className={`min-h-screen flex items-center justify-center ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
             <div className="w-full max-w-md px-4">
                 {/* Logo et titre */}
                 <div className="text-center mb-8">
-                    <div className={`inline-flex items-center justify-center w-20 h-20 rounded-2xl mb-4 ${darkMode ? 'bg-slate-800' : 'bg-white shadow-lg'
-                        }`}>
-                        <span className="text-4xl">📰</span>
-                    </div>
-                    <h1 className={`text-4xl font-extrabold tracking-tight ${darkMode ? 'text-white' : 'text-gray-900'
-                        }`}>
-                        INFODROP
+                    <h1 className={`text-3xl font-bold text-center mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                        📰 INFODROP
                     </h1>
-                    <p className={`mt-2 text-lg ${darkMode ? 'text-gray-400' : 'text-gray-600'
-                        }`}>
-                        Le Club privé de l'actu gamifiée
+                    <p className={`text-center ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                        Le Club privé de l'actu centralisée
                     </p>
                 </div>
 
                 {/* Card principale */}
-                <div className={`rounded-2xl shadow-xl overflow-hidden ${darkMode ? 'bg-slate-900 border border-slate-800' : 'bg-white'
-                    }`}>
+                <div className={`rounded-lg shadow-2xl overflow-hidden ${darkMode ? 'bg-gray-800/50 backdrop-blur-sm border border-gray-700' : 'bg-white'}`}>
                     {!emailSent ? (
-                        <form onSubmit={handleSubmit} className="p-8 space-y-6">
-                            {/* Titre de la card */}
-                            <div className="text-center">
-                                <h2 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'
-                                    }`}>
-                                    Accès membres
-                                </h2>
-                                <p className={`mt-2 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'
-                                    }`}>
-                                    Connectez-vous avec votre lien magique
-                                </p>
-                            </div>
-
+                        <form onSubmit={handleSubmit} className="p-8 space-y-4">
                             {/* Champ email */}
                             <div>
-                                <label htmlFor="email" className="sr-only">
-                                    Adresse email
-                                </label>
-                                <div className="relative">
-                                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                        <Mail className={`h-5 w-5 ${darkMode ? 'text-gray-500' : 'text-gray-400'
-                                            }`} />
-                                    </div>
-                                    <input
-                                        id="email"
-                                        name="email"
-                                        type="email"
-                                        autoComplete="email"
-                                        required
-                                        value={email}
-                                        onChange={(e) => setEmail(e.target.value.toLowerCase())}
-                                        className={`block w-full pl-10 pr-3 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${darkMode
-                                                ? 'bg-slate-800 border border-slate-700 text-white placeholder-gray-500'
-                                                : 'bg-gray-50 border border-gray-300 text-gray-900 placeholder-gray-400'
-                                            }`}
-                                        placeholder="votre@email.com"
-                                    />
-                                </div>
+                                <input
+                                    type="email"
+                                    required
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value.toLowerCase())}
+                                    className={`w-full px-4 py-2 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${darkMode
+                                        ? 'bg-gray-900 border border-gray-600 text-white placeholder-gray-500'
+                                        : 'bg-gray-50 border border-gray-300 text-gray-900 placeholder-gray-400'
+                                        }`}
+                                    placeholder="votre@email.com"
+                                />
                             </div>
 
-                            {/* Champ code d'invitation - VISIBLE */}
+                            {/* Champ code d'invitation */}
                             <div>
-                                <label htmlFor="inviteCode" className="sr-only">
-                                    Code d'invitation
-                                </label>
-                                <div className="relative">
-                                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                        <Key className={`h-5 w-5 ${darkMode ? 'text-gray-500' : 'text-gray-400'
-                                            }`} />
-                                    </div>
-                                    <input
-                                        id="inviteCode"
-                                        name="inviteCode"
-                                        type="text"
-                                        value={inviteCode}
-                                        onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
-                                        className={`block w-full pl-10 pr-3 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${darkMode
-                                                ? 'bg-slate-800 border border-slate-700 text-white placeholder-gray-500'
-                                                : 'bg-gray-50 border border-gray-300 text-gray-900 placeholder-gray-400'
-                                            }`}
-                                        placeholder="Code d'invitation (si nouveau)"
-                                    />
-                                </div>
+                                <input
+                                    type="text"
+                                    value={inviteCode}
+                                    onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
+                                    className={`w-full px-4 py-2 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${darkMode
+                                        ? 'bg-gray-900 border border-gray-600 text-white placeholder-gray-500'
+                                        : 'bg-gray-50 border border-gray-300 text-gray-900 placeholder-gray-400'
+                                        }`}
+                                    placeholder="Code d'invitation (si nouveau)"
+                                />
                             </div>
-
-                            {/* Messages d'erreur améliorés */}
-                            {error && (
-                                <div className="flex items-start gap-3 p-4 rounded-lg bg-red-500/10 border border-red-500/20">
-                                    <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
-                                    <div className="flex-1">
-                                        <p className="text-sm text-red-500 font-medium">{error}</p>
-                                        {error.includes('invitation') && (
-                                            <p className="text-xs text-red-400 mt-1">
-                                                Les codes sont distribués lors d'événements spéciaux.
-                                                Suivez-nous pour ne pas les manquer !
-                                            </p>
-                                        )}
-                                    </div>
-                                </div>
-                            )}
 
                             {/* Bouton de connexion */}
                             <button
                                 type="submit"
                                 disabled={loading}
                                 className={`w-full py-3 px-4 rounded-lg font-medium transition-all duration-200 ${loading
-                                        ? 'bg-blue-800 cursor-not-allowed'
-                                        : 'bg-blue-600 hover:bg-blue-700 active:scale-[0.98]'
-                                    } text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 ${darkMode ? 'focus:ring-offset-slate-900' : 'focus:ring-offset-white'
-                                    }`}
+                                    ? 'bg-indigo-800 cursor-not-allowed'
+                                    : 'bg-indigo-600 hover:bg-indigo-700'
+                                    } text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500`}
                             >
                                 {loading ? (
                                     <span className="flex items-center justify-center gap-2">
@@ -173,45 +115,48 @@ const AuthForm = ({ darkMode = true }) => {
                                 )}
                             </button>
 
-                            {/* Info supplémentaire */}
-                            <div className={`flex items-start gap-3 p-4 rounded-lg ${darkMode ? 'bg-slate-800' : 'bg-blue-50'
-                                }`}>
-                                <Info className={`w-5 h-5 flex-shrink-0 mt-0.5 ${darkMode ? 'text-blue-400' : 'text-blue-600'
-                                    }`} />
-                                <div className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'
+                            {/* Lien d'aide */}
+                            <p className={`text-xs text-center ${darkMode ? 'text-gray-500' : 'text-gray-600'}`}>
+                                💡 Pas de code ? Suivez{' '}
+                                <a
+                                    href="https://x.com/LOR4_14"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-400 hover:underline"
+                                >
+                                    nos annonces
+                                </a>{' '}
+                                pour en gagner un !
+                            </p>
+
+                            {/* Messages de retour */}
+                            {message && (
+                                <div className={`mt-4 p-3 rounded-lg text-sm ${messageType === 'error'
+                                        ? 'bg-red-900/50 text-red-300 border border-red-700'
+                                        : 'bg-green-900/50 text-green-300 border border-green-700'
                                     }`}>
-                                    <p className="font-medium mb-1">Comment ça marche ?</p>
-                                    <p className={darkMode ? 'text-gray-400' : 'text-gray-600'}>
-                                        • <strong>Première connexion :</strong> Entrez votre email + code d'invitation<br />
-                                        • <strong>Connexions suivantes :</strong> Email uniquement, pas besoin du code<br />
-                                        • Pas de mot de passe, juste un lien magique par email
-                                    </p>
+                                    {message}
                                 </div>
-                            </div>
+                            )}
                         </form>
                     ) : (
                         /* Écran de confirmation */
                         <div className="p-8 text-center">
-                            <div className={`inline-flex items-center justify-center w-16 h-16 rounded-full mb-4 ${darkMode ? 'bg-green-900/20' : 'bg-green-100'
-                                }`}>
+                            <div className={`inline-flex items-center justify-center w-16 h-16 rounded-full mb-4 ${darkMode ? 'bg-green-900/20' : 'bg-green-100'}`}>
                                 <CheckCircle className="w-8 h-8 text-green-500" />
                             </div>
 
-                            <h3 className={`text-xl font-bold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'
-                                }`}>
+                            <h3 className={`text-xl font-bold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                                 Email envoyé !
                             </h3>
 
-                            <p className={`mb-6 ${darkMode ? 'text-gray-400' : 'text-gray-600'
-                                }`}>
+                            <p className={`mb-6 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
                                 Vérifiez votre boîte mail<br />
                                 <span className="font-medium">{email}</span>
                             </p>
 
-                            <div className={`p-4 rounded-lg mb-6 ${darkMode ? 'bg-slate-800' : 'bg-gray-50'
-                                }`}>
-                                <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'
-                                    }`}>
+                            <div className={`p-4 rounded-lg mb-6 ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+                                <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                                     Cliquez sur le lien dans l'email pour vous connecter.
                                     Le lien expire dans <strong>60 minutes</strong>.
                                 </p>
@@ -219,8 +164,7 @@ const AuthForm = ({ darkMode = true }) => {
 
                             <button
                                 onClick={resetForm}
-                                className={`text-sm font-medium ${darkMode ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-700'
-                                    }`}
+                                className={`text-sm font-medium ${darkMode ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-700'}`}
                             >
                                 Utiliser une autre adresse email
                             </button>
@@ -230,9 +174,11 @@ const AuthForm = ({ darkMode = true }) => {
 
                 {/* Footer */}
                 <div className="mt-8 text-center">
-                    <p className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-600'
-                        }`}>
-                        Un projet 3C by Emile Marclin & L0r4.py
+                    <p className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-600'}`}>
+                        © 2025 INFODROP. Tous droits réservés.
+                    </p>
+                    <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-600'}`}>
+                        Un projet 3C - By Emile Marclin & L0r4.py [AI]
                     </p>
                 </div>
             </div>

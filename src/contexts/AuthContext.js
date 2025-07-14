@@ -1,16 +1,15 @@
 // src/contexts/AuthContext.js
-// Version corrigée basée sur la logique V1 - Utilise uniquement signInWithOtp
+// Version adaptée pour fonctionner exactement comme la V1
 
 import React, { createContext, useState, useContext, useEffect } from 'react';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { createClient } from '@supabase/supabase-js';
 
 const AuthContext = createContext(null);
-const ADMIN_EMAIL = process.env.REACT_APP_ADMIN_EMAIL?.toLowerCase();
 
-// Log pour vérifier que la variable est bien chargée (à retirer en production)
-if (process.env.NODE_ENV === 'development') {
-    console.log('Admin email configuré:', ADMIN_EMAIL);
-}
+// Variables globales pour stocker la config
+let ADMIN_EMAILS = [];
+let STRIPE_LINK = '';
+let supabase = null;
 
 export const useAuth = () => {
     const context = useContext(AuthContext);
@@ -25,188 +24,324 @@ export const AuthProvider = ({ children }) => {
     const [session, setSession] = useState(null);
     const [isAdmin, setIsAdmin] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
-    const [rateLimitEndTime, setRateLimitEndTime] = useState(null);
+    const [sessionLoaded, setSessionLoaded] = useState(false);
 
+    // État pour les données d'invitation
+    const [userInviteData, setUserInviteData] = useState({
+        code: null,
+        is_used: false,
+        parrainEmail: null,
+        filleulEmail: null
+    });
+
+    // Initialisation au montage (comme dans V1)
     useEffect(() => {
-        if (!isSupabaseConfigured()) {
-            console.warn('Supabase non configuré - Mode démo activé');
-            setIsLoading(false);
-            return;
-        }
-
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-            console.log('Auth state change:', event);
-            setSession(session);
-            const currentUser = session?.user ?? null;
-            setUser(currentUser);
-            setIsAdmin(currentUser?.email?.toLowerCase() === ADMIN_EMAIL);
-
-            // Gérer le code après connexion réussie
-            if (event === 'SIGNED_IN' && currentUser) {
-                handlePostSignIn(currentUser);
-            }
-
-            setIsLoading(false);
-        });
-
-        return () => subscription?.unsubscribe();
+        initializeSupabase();
     }, []);
 
-    // Fonction pour marquer le code comme utilisé après connexion
-    const handlePostSignIn = async (user) => {
-        const pendingCode = sessionStorage.getItem('pending_invite_code');
-        const pendingEmail = sessionStorage.getItem('pending_invite_email');
-
-        if (!pendingCode || !pendingEmail) return;
-
+    // Fonction d'initialisation (adaptée de V1)
+    const initializeSupabase = async () => {
+        console.log('🔐 initializeSupabase() lancé');
         try {
-            // Marquer le code comme utilisé
-            const { error } = await supabase
-                .from('referral_codes')
-                .update({
-                    uses_count: supabase.raw('uses_count + 1'),
-                    is_active: supabase.raw('case when uses_count + 1 >= max_uses then false else true end')
-                })
-                .eq('code', pendingCode);
+            // Adapter l'URL selon l'environnement
+            const apiUrl = process.env.NODE_ENV === 'development'
+                ? 'http://localhost:3000/api/config'
+                : '/api/config';
 
-            if (!error) {
-                console.log('Code marqué comme utilisé:', pendingCode);
+            const res = await fetch(apiUrl);
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            const cfg = await res.json();
+
+            ADMIN_EMAILS = cfg.adminEmails;
+            STRIPE_LINK = cfg.stripeLink;
+            console.log('⚙️  Config récupérée', cfg);
+
+            // Créer le client Supabase
+            supabase = createClient(cfg.supabaseUrl, cfg.supabaseAnonKey);
+
+            console.log('✅ Supabase initialisé');
+
+            // Configurer le listener d'authentification
+            const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+                console.log('Auth state change:', event);
+                setSession(session);
+                const currentUser = session?.user ?? null;
+                setUser(currentUser);
+                setSessionLoaded(true);
+
+                if (event === 'SIGNED_IN' && currentUser) {
+                    console.log('✅ Événement SIGNED_IN détecté ! Chargement des données...');
+                    setIsAdmin(ADMIN_EMAILS.includes(currentUser.email?.toLowerCase()));
+                    await loadUserInviteData(currentUser);
+                }
+
+                if (event === 'SIGNED_OUT') {
+                    setUserInviteData({
+                        code: null,
+                        is_used: false,
+                        parrainEmail: null,
+                        filleulEmail: null
+                    });
+                }
+
+                setIsLoading(false);
+            });
+
+            // Vérifier la session existante
+            const { data: { session: existingSession } } = await supabase.auth.getSession();
+            if (existingSession) {
+                setSession(existingSession);
+                setUser(existingSession.user);
+                setIsAdmin(ADMIN_EMAILS.includes(existingSession.user?.email?.toLowerCase()));
+                await loadUserInviteData(existingSession.user);
             }
-        } catch (error) {
-            console.error('Erreur lors de la mise à jour du code:', error);
-        } finally {
-            sessionStorage.removeItem('pending_invite_code');
-            sessionStorage.removeItem('pending_invite_email');
+
+            setSessionLoaded(true);
+            setIsLoading(false);
+
+        } catch (err) {
+            console.error('❌ Erreur initialisation:', err);
+            setSessionLoaded(true);
+            setIsLoading(false);
+
+            // Afficher une erreur visuelle (comme dans V1)
+            const errorDiv = document.createElement('div');
+            errorDiv.innerHTML = `
+                <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); color: white; display: flex; align-items: center; justify-content: center; z-index: 9999; font-family: Arial;">
+                    <div style="text-align: center; padding: 2rem;">
+                        <h2>❌ Erreur de configuration</h2>
+                        <p>Impossible de charger la configuration sécurisée.</p>
+                        <p>Veuillez contacter l'administrateur.</p>
+                        <button onclick="window.location.reload()" style="margin-top: 1rem; padding: 0.5rem 1rem; background: #3B82F6; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                            Recharger la page
+                        </button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(errorDiv);
         }
     };
 
-    const loginOrSignUp = async (email, inviteCode) => {
-        if (!isSupabaseConfigured()) throw new Error('Supabase non configuré');
-        setIsLoading(true);
+    // Fonction login adaptée de V1
+    const login = async (email, inviteCode) => {
+        if (!supabase) throw new Error('Supabase non configuré');
 
         try {
             const normalizedEmail = email.toLowerCase().trim();
-            const normalizedCode = inviteCode?.toUpperCase().trim();
 
-            console.log('Tentative de connexion pour:', normalizedEmail);
+            // Vérifie si l'email existe déjà
+            const apiUrl = process.env.NODE_ENV === 'development'
+                ? 'http://localhost:3000/api/check-email'
+                : '/api/check-email';
 
-            // CAS 1 : Admin - connexion directe
-            if (normalizedEmail === ADMIN_EMAIL) {
-                console.log("Connexion admin...");
-                const { data, error } = await supabase.auth.signInWithOtp({
-                    email: normalizedEmail,
-                    options: {
-                        emailRedirectTo: window.location.origin
-                    }
+            const checkRes = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: normalizedEmail })
+            });
+
+            if (!checkRes.ok) {
+                const err = await checkRes.json();
+                throw new Error(err.error || 'Erreur de communication.');
+            }
+
+            const { exists } = await checkRes.json();
+
+            // Si l'utilisateur n'existe pas, il faut un code valide
+            if (!exists) {
+                if (!inviteCode) {
+                    throw new Error("Code d'invitation requis pour les nouveaux utilisateurs.");
+                }
+
+                const validateApiUrl = process.env.NODE_ENV === 'development'
+                    ? 'http://localhost:3000/api/validate-invite'
+                    : '/api/validate-invite';
+
+                const validateRes = await fetch(validateApiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code: inviteCode, email: normalizedEmail })
                 });
 
-                console.log('Résultat admin:', { data, error });
-
-                if (error) throw error;
-                return { success: true, message: "Lien de connexion envoyé à l'admin." };
+                const validationResult = await validateRes.json();
+                if (!validationResult.success) {
+                    throw new Error(validationResult.error);
+                }
             }
 
-            // CAS 2 : Utilisateur normal
-            // Si code fourni = nouvel utilisateur probable
-            if (normalizedCode) {
-                console.log("Vérification du code:", normalizedCode);
-
-                const { data: codeData, error: codeError } = await supabase
-                    .from('referral_codes')
-                    .select('*')
-                    .eq('code', normalizedCode)
-                    .single();
-
-                if (codeError || !codeData) {
-                    throw new Error("Code d'invitation invalide.");
-                }
-
-                if (!codeData.is_active) {
-                    throw new Error("Ce code d'invitation n'est plus actif.");
-                }
-
-                if (codeData.uses_count >= codeData.max_uses) {
-                    throw new Error("Ce code a atteint sa limite d'utilisations.");
-                }
-
-                // Stocker le code pour le marquer comme utilisé après connexion
-                sessionStorage.setItem('pending_invite_code', normalizedCode);
-                sessionStorage.setItem('pending_invite_email', normalizedEmail);
-            }
-
-            // TOUJOURS utiliser signInWithOtp (jamais signUp)
-            console.log("Envoi du magic link pour:", normalizedEmail);
-            const { data, error } = await supabase.auth.signInWithOtp({
+            // On envoie l'OTP (lien magique) seulement si tout est OK
+            const { error: otpError } = await supabase.auth.signInWithOtp({
                 email: normalizedEmail,
                 options: {
                     emailRedirectTo: window.location.origin
-                    // On retire shouldCreateUser qui cause des problèmes
                 }
             });
 
-            console.log('Résultat signInWithOtp:', { data, error });
-
-            if (error) {
-                // Nettoyer en cas d'erreur
-                sessionStorage.removeItem('pending_invite_code');
-                sessionStorage.removeItem('pending_invite_email');
-
-                // Gérer l'erreur de rate limiting
-                if (error.message?.includes('For security purposes')) {
-                    const seconds = error.message.match(/(\d+) seconds/)?.[1] || '60';
-                    throw new Error(`Trop de tentatives. Veuillez attendre ${seconds} secondes avant de réessayer.`);
-                }
-
-                // Si l'erreur indique que l'user n'existe pas et pas de code
-                if (!normalizedCode && (error.message?.includes('not found') || error.message?.includes('not exist'))) {
-                    throw new Error("Aucun compte trouvé. Un code d'invitation est requis pour créer un compte.");
-                }
-                throw error;
-            }
+            if (otpError) throw otpError;
 
             return {
                 success: true,
-                message: normalizedCode ?
-                    'Code valide ! Vérifiez votre boîte mail.' :
-                    'Lien de connexion envoyé !'
+                message: 'Vérifiez vos emails ! Un lien de connexion a été envoyé.'
             };
 
         } catch (error) {
-            console.error("Erreur Auth:", error);
             return {
                 success: false,
-                error: error.message || "Une erreur est survenue"
+                error: error.message || 'Une erreur est survenue.'
             };
-        } finally {
-            setIsLoading(false);
+        }
+    };
+
+    // Chargement des données d'invitation (copié de V1)
+    const loadUserInviteData = async (currentUser) => {
+        if (!currentUser || !currentUser.email) {
+            console.log('❌ Pas d\'utilisateur connecté pour charger les données d\'invitation');
+            return;
+        }
+
+        // Vérification admin
+        if (isAdmin) {
+            console.log('👑 Utilisateur admin détecté, traitement spécial...');
+
+            try {
+                const { data: adminCode, error: adminError } = await supabase
+                    .from('invitation_codes')
+                    .select('*')
+                    .ilike('owner_email', currentUser.email.toLowerCase())
+                    .maybeSingle();
+
+                if (adminError && adminError.code !== 'PGRST116') {
+                    console.error('❌ Erreur requête admin:', adminError);
+                    return;
+                }
+
+                if (adminCode) {
+                    console.log('✅ Code admin existant trouvé:', adminCode.code);
+                    setUserInviteData(prev => ({
+                        ...prev,
+                        code: adminCode.code,
+                        is_used: adminCode.is_used || false,
+                        filleulEmail: adminCode.is_used ? adminCode.used_by_email : null
+                    }));
+                }
+
+                return;
+
+            } catch (error) {
+                console.error('❌ Erreur traitement admin:', error);
+                return;
+            }
+        }
+
+        // Traitement pour utilisateurs normaux
+        try {
+            console.log('🔄 Chargement des données d\'invitation pour:', currentUser.email);
+
+            // Récupérer le code d'invitation du compte connecté
+            const { data: ownCode, error: ownCodeError } = await supabase
+                .from('invitation_codes')
+                .select('*')
+                .ilike('owner_email', currentUser.email.toLowerCase())
+                .maybeSingle();
+
+            if (ownCodeError && ownCodeError.code !== 'PGRST116') {
+                console.error('❌ Erreur récupération code proprio:', ownCodeError);
+            } else if (ownCode) {
+                console.log('✅ Code proprio récupéré:', ownCode);
+                setUserInviteData(prev => ({
+                    ...prev,
+                    code: ownCode.code,
+                    is_used: ownCode.is_used || false,
+                    filleulEmail: ownCode.is_used ? ownCode.used_by_email : null
+                }));
+            }
+
+            // Récupérer le parrain
+            const { data: usedCode, error: usedCodeError } = await supabase
+                .from('invitation_codes')
+                .select('owner_email')
+                .ilike('used_by_email', currentUser.email.toLowerCase())
+                .maybeSingle();
+
+            if (usedCodeError && usedCodeError.code !== 'PGRST116') {
+                console.error('❌ Erreur récupération parrain:', usedCodeError);
+            } else if (usedCode) {
+                console.log('✅ Parrain récupéré:', usedCode);
+                setUserInviteData(prev => ({
+                    ...prev,
+                    parrainEmail: usedCode.owner_email
+                }));
+            }
+
+        } catch (error) {
+            console.error("❌ Erreur générale lors du chargement des données d'invitation:", error);
+        }
+    };
+
+    // Fonction pour générer un code (admin)
+    const generateInviteCode = async () => {
+        if (!isAdmin || !session) return null;
+
+        try {
+            const apiUrl = process.env.NODE_ENV === 'development'
+                ? 'http://localhost:3000/api/generate-invite'
+                : '/api/generate-invite';
+
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${session.access_token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                console.log('✅ Code généré:', result.code);
+                return result.code;
+            }
+
+            throw new Error(result.error || 'Erreur lors de la génération');
+
+        } catch (error) {
+            console.error('❌ Erreur génération code:', error);
+            throw error;
         }
     };
 
     const logout = async () => {
-        if (!isSupabaseConfigured()) return;
+        if (!supabase) return;
         await supabase.auth.signOut();
-        sessionStorage.removeItem('pending_invite_code');
-        sessionStorage.removeItem('pending_invite_email');
     };
 
-    // Fonction de connexion avec lien magique (ancienne, on la garde pour compatibilité)
-    const signInWithMagicLink = async (email, inviteCode = '') => {
-        console.warn('signInWithMagicLink est déprécié, utilisez loginOrSignUp');
-        return loginOrSignUp(email, inviteCode);
-    };
+    // Alias pour compatibilité avec V2
+    const loginOrSignUp = login;
+    const signInWithMagicLink = login;
 
     const value = {
+        // État
         user,
         session,
         isAdmin,
         isAuthenticated: !!user,
         isLoading,
+        sessionLoaded,
+        userInviteData,
+
+        // Méthodes
+        login,
         loginOrSignUp,
-        signInWithMagicLink, // Gardée pour compatibilité
+        signInWithMagicLink,
         logout,
+        generateInviteCode,
+
         // Helpers
         userEmail: user?.email || null,
-        userId: user?.id || null
+        userId: user?.id || null,
+
+        // Config
+        STRIPE_LINK
     };
 
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
