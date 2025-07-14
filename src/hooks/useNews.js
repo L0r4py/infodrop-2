@@ -1,5 +1,5 @@
 // src/hooks/useNews.js
-// VERSION FINALE - AVEC RECHERCHE
+// VERSION FINALE - AVEC RECHERCHE ET ACTUALISATION AUTOMATIQUE
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
@@ -13,22 +13,22 @@ export const useNews = () => {
     const [news, setNews] = useState([]);
     const [selectedCategory, setSelectedCategory] = useState('all');
     const [selectedTags, setSelectedTags] = useState([]);
-    const [searchTerm, setSearchTerm] = useState(''); // ✅ NOUVEL ÉTAT
+    const [searchTerm, setSearchTerm] = useState('');
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState(null);
 
-    // ✅ ÉTAT DES STATS GLOBALES CENTRALISÉ ICI
+    // État des stats globales
     const [globalStats, setGlobalStats] = useState({
         total_articles: 0,
         active_sources: 0,
         articles_publies_24h: 0
     });
 
-    // 🔥 PROTECTION CONTRE LES RACE CONDITIONS
+    // Protection contre les race conditions
     const loadingRef = useRef(false);
     const abortControllerRef = useRef(null);
 
-    // ✅ FONCTION PRIVÉE : Charger les stats globales
+    // Fonction pour charger les stats globales
     const fetchGlobalStats = useCallback(async () => {
         if (!supabase) {
             console.warn('⚠️ Supabase non disponible pour les stats');
@@ -59,15 +59,15 @@ export const useNews = () => {
         }
     }, []);
 
-    // ✅ FONCTION PRINCIPALE : Charger les news PUIS les stats
+    // Fonction principale pour charger les news
     const loadNews = useCallback(async () => {
-        // 🛡️ Si un chargement est déjà en cours, on abandonne
+        // Si un chargement est déjà en cours, on abandonne
         if (loadingRef.current) {
             console.log('⚠️ Chargement déjà en cours, abandon...');
             return;
         }
 
-        // 🛡️ Annuler toute requête précédente
+        // Annuler toute requête précédente
         if (abortControllerRef.current) {
             abortControllerRef.current.abort();
         }
@@ -96,7 +96,7 @@ export const useNews = () => {
 
             console.log('📥 Chargement des articles...');
 
-            // 🎯 ÉTAPE 1 : Charger les articles
+            // Charger les articles
             const { data, error: supabaseError } = await supabase
                 .from('articles')
                 .select('*')
@@ -111,7 +111,7 @@ export const useNews = () => {
 
             if (supabaseError) throw supabaseError;
 
-            // CONVERSION PARE-BALLES
+            // Conversion des données
             const convertedNews = (data || []).map(article => {
                 const safeTitle = String(article.title || 'Sans titre');
                 const safeSource = String(article.source_name || 'Source inconnue');
@@ -161,7 +161,7 @@ export const useNews = () => {
                 console.log(`✅ ${recentNews.length} articles chargés`);
                 setNews(recentNews);
 
-                // 🎯 ÉTAPE 2 : Charger les stats APRÈS les articles
+                // Charger les stats après les articles
                 await fetchGlobalStats();
             }
 
@@ -180,7 +180,7 @@ export const useNews = () => {
         }
     }, [fetchGlobalStats, news]);
 
-    // ✅ UN SEUL useEffect POUR GÉRER TOUT LE CYCLE DE VIE
+    // ✅ ACTUALISATION AUTOMATIQUE - useEffect pour gérer le cycle de vie
     useEffect(() => {
         let timeoutId;
         let mounted = true;
@@ -191,7 +191,7 @@ export const useNews = () => {
             console.log('🔄 Cycle de chargement...');
             await loadNews();
 
-            // Programmer le prochain cycle SEULEMENT après la fin du chargement
+            // Programmer le prochain cycle après la fin du chargement
             if (mounted) {
                 timeoutId = setTimeout(runLoadCycle, REFRESH_INTERVAL);
             }
@@ -210,7 +210,7 @@ export const useNews = () => {
         };
     }, [loadNews]);
 
-    // ✅ FONCTION : Ajouter un article (Admin)
+    // Fonction pour ajouter un article (Admin)
     const addNews = useCallback(async (newArticle) => {
         if (!USE_SUPABASE || !isSupabaseConfigured() || !supabase) {
             const mockArticle = {
@@ -280,7 +280,7 @@ export const useNews = () => {
         }
     }, [fetchGlobalStats]);
 
-    // ✅ FONCTION : Mettre à jour un article
+    // Fonction pour mettre à jour un article
     const updateNews = useCallback(async (id, updates) => {
         if (!id) return { success: false, error: 'ID manquant' };
 
@@ -332,7 +332,7 @@ export const useNews = () => {
         }
     }, []);
 
-    // ✅ FONCTION : Supprimer un article
+    // Fonction pour supprimer un article
     const deleteNews = useCallback(async (id) => {
         if (!id) return { success: false, error: 'ID manquant' };
 
@@ -360,7 +360,7 @@ export const useNews = () => {
         }
     }, [fetchGlobalStats]);
 
-    // ✅ FONCTION : Marquer comme lu
+    // Fonction pour marquer comme lu
     const markAsRead = useCallback(async (id) => {
         if (!id) return;
 
@@ -391,7 +391,7 @@ export const useNews = () => {
         }
     }, [news]);
 
-    // ✅ FONCTION : Incrémenter les clics
+    // Fonction pour incrémenter les clics
     const incrementClicks = useCallback(async (id) => {
         if (!id) return;
 
@@ -418,32 +418,31 @@ export const useNews = () => {
         }
     }, [news]);
 
-    // ✅ LOGIQUE DE FILTRAGE MISE À JOUR
+    // Logique de filtrage
     const filteredNews = useMemo(() => {
         if (!Array.isArray(news)) return [];
 
         let filtered = [...news];
 
-        // 1. Filtrage par recherche textuelle (appliqué en premier)
+        // Filtrage par recherche textuelle
         if (searchTerm && searchTerm.trim() !== '') {
             const lowercasedTerm = searchTerm.toLowerCase().trim();
             filtered = filtered.filter(item => {
                 if (!item) return false;
-                // On cherche dans le titre ET la source
                 const titleMatch = (item.title?.toLowerCase() || '').includes(lowercasedTerm);
                 const sourceMatch = (item.source?.toLowerCase() || '').includes(lowercasedTerm);
                 return titleMatch || sourceMatch;
             });
         }
 
-        // 2. Filtrage par orientation
+        // Filtrage par orientation
         if (selectedCategory !== 'all') {
             filtered = filtered.filter(item =>
                 item && String(item.orientation) === selectedCategory
             );
         }
 
-        // 3. Filtrage par tags
+        // Filtrage par tags
         if (selectedTags.length > 0) {
             filtered = filtered.filter(item =>
                 item && item.tags && Array.isArray(item.tags) &&
@@ -455,7 +454,7 @@ export const useNews = () => {
         filtered.sort((a, b) => (b?.timestamp || 0) - (a?.timestamp || 0));
 
         return filtered;
-    }, [news, selectedCategory, selectedTags, searchTerm]); // ✅ searchTerm ajouté aux dépendances
+    }, [news, selectedCategory, selectedTags, searchTerm]);
 
     // Obtenir tous les tags uniques
     const allTags = useMemo(() => {
@@ -592,7 +591,7 @@ export const useNews = () => {
         }
     }, []);
 
-    // ✅ RETOUR FINAL AVEC searchTerm ET setSearchTerm
+    // Retour final avec toutes les fonctions et états
     return {
         // État
         news,
@@ -603,8 +602,8 @@ export const useNews = () => {
         isLoading,
         error,
         globalStats,
-        searchTerm,      // ✅ Nouveau
-        setSearchTerm,   // ✅ Nouveau
+        searchTerm,
+        setSearchTerm,
 
         // Actions CRUD
         addNews,
