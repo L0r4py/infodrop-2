@@ -7,8 +7,6 @@ import './styles/animations.css';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from "@vercel/speed-insights/react"
 
-// PAS D'IMPORT DE SUPABASE ICI - Tout vient du hook useNews
-
 // Contexts
 import { AuthProvider } from './contexts/AuthContext';
 import { GameProvider } from './contexts/GameContext';
@@ -50,12 +48,10 @@ import { grades } from './data/rewards';
 // Icônes
 import { RefreshCw, Wifi, WifiOff } from 'lucide-react';
 
-// ✅ NOUVEL IMPORT - Formulaire d'authentification
+// Formulaire d'authentification
 import AuthForm from './components/auth/AuthForm';
 
-// ❌ PAS DE fetchGlobalStats ICI - Elle est dans le hook
-
-// 🆕 FONCTION DE NETTOYAGE DES DONNÉES
+// Fonction de nettoyage des données
 const cleanOrientationCounts = (counts) => {
   if (!counts || typeof counts !== 'object') return {};
 
@@ -74,7 +70,7 @@ const cleanOrientationCounts = (counts) => {
   return cleaned;
 };
 
-// ✅ NOUVEAU - Composant de chargement élégant
+// Composant de chargement élégant
 const LoadingScreen = ({ darkMode }) => (
   <div className={`min-h-screen flex items-center justify-center ${darkMode ? 'bg-slate-950' : 'bg-gray-50'
     }`}>
@@ -95,7 +91,7 @@ const LoadingScreen = ({ darkMode }) => (
   </div>
 );
 
-// Composant principal de l'application (inchangé)
+// Composant principal de l'application
 const InfodropApp = () => {
   const { darkMode } = useTheme();
   const { user, isAdmin } = useAuth();
@@ -108,7 +104,7 @@ const InfodropApp = () => {
     xpAnimationPoints
   } = useGame();
 
-  // ✅ LE HOOK NOUS DONNE TOUT, Y COMPRIS globalStats
+  // Récupération de toutes les fonctionnalités du hook useNews
   const {
     news,
     filteredNews,
@@ -120,9 +116,9 @@ const InfodropApp = () => {
     allTags,
     isLoading,
     error,
-    globalStats, // ✅ ON RÉCUPÈRE LES STATS DIRECTEMENT
-    searchTerm,     // ✅ NOUVEAU
-    setSearchTerm,  // ✅ NOUVEAU
+    globalStats,
+    searchTerm,
+    setSearchTerm,
     forceRefresh,
     addNews,
     updateNews,
@@ -146,9 +142,6 @@ const InfodropApp = () => {
 
   // État de connexion
   const [isOnline, setIsOnline] = useState(navigator.onLine);
-
-  // ❌ PAS D'ÉTAT LOCAL POUR globalStats - Elles viennent du hook
-  // ❌ PAS DE useEffect POUR CHARGER LES STATS - C'est la correction clé !
 
   // Vérifier la connexion internet
   useEffect(() => {
@@ -235,7 +228,7 @@ const InfodropApp = () => {
       <Header
         userStats={userStats}
         onMenuClick={() => setMenuOpen(true)}
-        globalStats={globalStats} // ✅ Les stats viennent du hook
+        globalStats={globalStats}
       />
 
       {/* Info Ticker */}
@@ -256,7 +249,7 @@ const InfodropApp = () => {
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-6 pb-20 max-w-7xl">
-        {/* Score de Diversité - AVEC NETTOYAGE DES DONNÉES */}
+        {/* Score de Diversité */}
         <DiversityScore
           darkMode={darkMode}
           score={userStats.diversityScore || 0}
@@ -293,8 +286,8 @@ const InfodropApp = () => {
           toggleTag={toggleTag}
           allTags={allTags}
           clearTags={clearTags}
-          searchTerm={searchTerm}        // ✅ Nouvelle prop
-          setSearchTerm={setSearchTerm}  // ✅ Nouvelle prop
+          searchTerm={searchTerm}
+          setSearchTerm={setSearchTerm}
           articleCount={filteredNews.length}
         />
 
@@ -397,7 +390,7 @@ const InfodropApp = () => {
         />
       )}
 
-      {/* Notifications système (si besoin) */}
+      {/* Notifications système */}
       {error && !isLoading && (
         <div className="fixed bottom-4 left-4 right-4 md:left-auto md:right-4 md:w-96 z-50">
           <div className={`
@@ -427,9 +420,9 @@ const InfodropApp = () => {
   );
 };
 
-// ✅ NOUVEAU - Composant intermédiaire qui gère l'affichage conditionnel
+// Composant intermédiaire qui gère l'affichage conditionnel
 const MainApp = () => {
-  const { isAuthenticated, sessionLoaded } = useAuth(); // ✅ Utiliser sessionLoaded comme V1
+  const { isAuthenticated, sessionLoaded } = useAuth();
   const { darkMode } = useTheme();
 
   // Afficher l'écran de chargement pendant la vérification de session
@@ -452,7 +445,7 @@ const MainApp = () => {
   );
 };
 
-// ✅ MODIFIÉ - Composant racine avec les providers
+// Composant racine avec les providers
 const App = () => {
   return (
     <AuthProvider>
