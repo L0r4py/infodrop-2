@@ -1,7 +1,7 @@
 // api/cron-purge-articles.js
 // Logique de daily-purge.js (V1) adaptée
 
-import { supabaseAdmin } from './config.js'; // ✅ On utilise la config centralisée
+import { supabaseAdmin } from './config.mjs'; // ✅ On utilise la config centralisée
 
 export default async function handler(req, res) {
     if (req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {

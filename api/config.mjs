@@ -1,4 +1,4 @@
-// api/config.js
+// api/config.mjs
 // API pour fournir la configuration de manière sécurisée (Version Vercel)
 
 export default async function handler(req, res) {

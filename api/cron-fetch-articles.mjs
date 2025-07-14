@@ -1,7 +1,7 @@
 // api/cron-fetch-articles.js
 // Logique de parse-rss.js (V1) adaptée pour la nouvelle config
 
-import { supabaseAdmin } from './config.js'; // ✅ On utilise la config centralisée
+import { supabaseAdmin } from './config.mjs'; // ✅ On utilise la config centralisée
 import Parser from 'rss-parser';
 
 // La liste des flux de la V1
