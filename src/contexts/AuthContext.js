@@ -1,113 +1,62 @@
 // src/contexts/AuthContext.js
-// VERSION CORRIGÉE ET ROBUSTE - AVEC VÉRIFICATION SUPPLÉMENTAIRE
+// VERSION DE DIAGNOSTIC : Affiche les erreurs de configuration
 
-import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
-
-const ADMIN_EMAILS = (process.env.REACT_APP_ADMIN_EMAILS || '').split(',');
+import React, { createContext, useState, useContext, useEffect } from 'react';
+// On importe aussi l'erreur de configuration
+import { supabase, isSupabaseConfigured, supabaseConfigurationError } from '../lib/supabase';
 
 const AuthContext = createContext(null);
 
 export const useAuth = () => useContext(AuthContext);
 
 export const AuthProvider = ({ children }) => {
-    const [user, setUser] = useState(null);
-    const [session, setSession] = useState(null);
-    const [isAdmin, setIsAdmin] = useState(false);
-    const [isLoading, setIsLoading] = useState(true);
     const [sessionLoaded, setSessionLoaded] = useState(false);
-    const [userProfile, setUserProfile] = useState(null);
-
-    const fetchUserProfile = useCallback(async (userId) => {
-        if (!userId) {
-            setUserProfile(null);
-            return;
-        }
-        try {
-            const { data, error } = await supabase.from('users').select('*').eq('id', userId).single();
-            if (error && error.code !== 'PGRST116') throw error;
-            setUserProfile(data);
-        } catch (error) {
-            console.error("Erreur récupération profil utilisateur:", error);
-            setUserProfile(null);
-        }
-    }, []);
+    const [user, setUser] = useState(null);
 
     useEffect(() => {
-        if (!isSupabaseConfigured()) {
-            console.error("Supabase n'est pas configuré.");
-            setIsLoading(false);
+        // Affiche l'erreur de configuration, s'il y en a une
+        if (supabaseConfigurationError) {
+            console.error("ERREUR DE CONFIGURATION DETECTEE PAR AUTHCONTEXT:", supabaseConfigurationError);
+            // On arrête tout ici pour éviter d'autres erreurs
+            setSessionLoaded(true); // Pour ne pas rester bloqué sur le chargement
+            return;
+        }
+
+        if (!isSupabaseConfigured || !supabase) {
+            console.log("AuthContext: Supabase non configuré, arrêt.");
             setSessionLoaded(true);
             return;
         }
 
-        // ✅ LA CORRECTION EST ICI : on vérifie que supabase.auth.onAuthStateChange est bien une fonction
-        if (typeof supabase.auth?.onAuthStateChange !== 'function') {
-            console.error("Erreur critique : supabase.auth.onAuthStateChange n'est pas une fonction. Problème d'initialisation de Supabase.");
-            setIsLoading(false);
-            setSessionLoaded(true);
-            return;
-        }
+        console.log("AuthContext: Démarrage de la surveillance de l'authentification...");
 
+        // On récupère la session actuelle
         supabase.auth.getSession().then(({ data: { session } }) => {
-            setSession(session);
-            const currentUser = session?.user ?? null;
-            setUser(currentUser);
-            setIsAdmin(currentUser ? ADMIN_EMAILS.includes(currentUser.email?.toLowerCase()) : false);
-            if (currentUser) fetchUserProfile(currentUser.id);
+            console.log("AuthContext: Session initiale récupérée.", session);
+            setUser(session?.user ?? null);
             setSessionLoaded(true);
-            setIsLoading(false);
         });
 
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-            setSession(session);
-            const currentUser = session?.user ?? null;
-            setUser(currentUser);
-            setIsAdmin(currentUser ? ADMIN_EMAILS.includes(currentUser.email?.toLowerCase()) : false);
-            if (currentUser) {
-                await fetchUserProfile(currentUser.id);
-            } else {
-                setUserProfile(null);
-            }
-            setIsLoading(false);
+        // On écoute les changements
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+            console.log("AuthContext: Changement d'état de l'authentification détecté.", session);
+            setUser(session?.user ?? null);
         });
 
+        // Nettoyage
         return () => {
             subscription?.unsubscribe();
         };
-    }, [fetchUserProfile]);
+    }, []);
 
-    const loginOrSignUp = async (email) => {
-        setIsLoading(true);
-        try {
-            const { error } = await supabase.auth.signInWithOtp({
-                email: email.toLowerCase().trim(),
-                options: { emailRedirectTo: window.location.origin },
-            });
-            if (error) throw error;
-            return { success: true, message: 'Vérifiez vos emails !' };
-        } catch (error) {
-            return { success: false, error: error.message };
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    const logout = async () => {
-        setIsLoading(true);
-        await supabase.auth.signOut();
-    };
-
+    // On simplifie le reste pour le test, on se concentre sur l'init
     const value = {
         user,
-        userProfile,
-        session,
-        isAdmin,
         isAuthenticated: !!user,
-        isLoading,
         sessionLoaded,
-        loginOrSignUp,
-        logout
+        // Fonctions vides pour le test
+        loginOrSignUp: () => console.log("login test"),
+        logout: () => console.log("logout test"),
     };
 
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
