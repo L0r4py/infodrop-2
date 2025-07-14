@@ -1,5 +1,5 @@
 // src/hooks/useNews.js
-// VERSION FINALE - AVEC RECHERCHE ET ACTUALISATION AUTOMATIQUE
+// VERSION CORRIGÉE - BOUCLE INFINIE SUPPRIMÉE
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
@@ -39,14 +39,14 @@ export const useNews = () => {
             const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
             const [articlesRes, sourcesRes] = await Promise.all([
-                supabase.from('articles').select('id').gte('pubDate', twentyFourHoursAgo),
+                supabase.from('articles').select('id', { count: 'exact' }).gte('pubDate', twentyFourHoursAgo),
                 supabase.from('articles').select('source_name').gte('pubDate', twentyFourHoursAgo)
             ]);
 
             if (articlesRes.error) throw articlesRes.error;
             if (sourcesRes.error) throw sourcesRes.error;
 
-            const total_articles = articlesRes.data?.length || 0;
+            const total_articles = articlesRes.count || 0;
             const uniqueSources = new Set(sourcesRes.data?.map(item => item.source_name) || []);
 
             setGlobalStats({
@@ -60,24 +60,21 @@ export const useNews = () => {
     }, []);
 
     // Fonction principale pour charger les news
-    const loadNews = useCallback(async () => {
-        // Si un chargement est déjà en cours, on abandonne
+    // ✅ CORRECTION : 'news' a été retiré des dépendances de useCallback pour éviter la boucle infinie.
+    const loadNews = useCallback(async (isInitialLoad = false) => {
         if (loadingRef.current) {
             console.log('⚠️ Chargement déjà en cours, abandon...');
             return;
         }
-
-        // Annuler toute requête précédente
         if (abortControllerRef.current) {
             abortControllerRef.current.abort();
         }
 
-        // Marquer le début du chargement
         loadingRef.current = true;
         abortControllerRef.current = new AbortController();
 
         // On met isLoading à true seulement si c'est le premier chargement
-        if (news.length === 0) {
+        if (isInitialLoad) {
             setIsLoading(true);
         }
         setError(null);
@@ -95,8 +92,6 @@ export const useNews = () => {
             }
 
             console.log('📥 Chargement des articles...');
-
-            // Charger les articles
             const { data, error: supabaseError } = await supabase
                 .from('articles')
                 .select('*')
@@ -111,7 +106,7 @@ export const useNews = () => {
 
             if (supabaseError) throw supabaseError;
 
-            // Conversion des données
+            // Logique de nettoyage et de conversion des données (très important)
             const convertedNews = (data || []).map(article => {
                 const safeTitle = String(article.title || 'Sans titre');
                 const safeSource = String(article.source_name || 'Source inconnue');
@@ -122,12 +117,22 @@ export const useNews = () => {
                 let safeTags = [];
                 if (Array.isArray(article.tags)) {
                     safeTags = article.tags.filter(tag => typeof tag === 'string');
+                } else if (typeof article.tags === 'string') {
+                    // Au cas où les tags seraient une chaîne JSON
+                    try {
+                        const parsed = JSON.parse(article.tags);
+                        if (Array.isArray(parsed)) {
+                            safeTags = parsed.filter(tag => typeof tag === 'string');
+                        }
+                    } catch (e) { /* Ignorer l'erreur */ }
                 }
 
                 let safeTimestamp = Date.now();
                 try {
-                    if (article.pubDate) {
-                        const parsedDate = new Date(article.pubDate);
+                    // Gère "pubDate" et "pubdate"
+                    const dateValue = article.pubDate || article.pubdate;
+                    if (dateValue) {
+                        const parsedDate = new Date(dateValue);
                         if (!isNaN(parsedDate.getTime())) {
                             safeTimestamp = parsedDate.getTime();
                         }
@@ -148,10 +153,10 @@ export const useNews = () => {
                     views: Number(article.views) || 0,
                     clicks: Number(article.clicks) || 0,
                     imageUrl: article.image_url || null,
-                    publishedAt: article.pubDate,
+                    publishedAt: article.pubDate || article.pubdate,
                     guid: article.guid || null
                 };
-            });
+            }).filter(Boolean); // Filtrer les articles potentiellement nuls
 
             // Filtrer les articles des dernières 24h
             const twentyFourHoursAgo = Date.now() - (24 * 60 * 60 * 1000);
@@ -160,8 +165,6 @@ export const useNews = () => {
             if (!abortControllerRef.current.signal.aborted) {
                 console.log(`✅ ${recentNews.length} articles chargés`);
                 setNews(recentNews);
-
-                // Charger les stats après les articles
                 await fetchGlobalStats();
             }
 
@@ -170,7 +173,6 @@ export const useNews = () => {
                 console.log('🛑 Chargement annulé');
                 return;
             }
-
             console.error('❌ Erreur chargement articles:', err);
             setError(err.message);
             setNews(mockNews);
@@ -178,29 +180,24 @@ export const useNews = () => {
             loadingRef.current = false;
             setIsLoading(false);
         }
-    }, [fetchGlobalStats, news]);
+    }, [fetchGlobalStats]); // ✅ 'news' a été retiré
 
-    // ✅ ACTUALISATION AUTOMATIQUE - useEffect pour gérer le cycle de vie
+    // Actualisation automatique
     useEffect(() => {
         let timeoutId;
         let mounted = true;
 
-        const runLoadCycle = async () => {
+        const runLoadCycle = async (isInitial) => {
             if (!mounted) return;
-
             console.log('🔄 Cycle de chargement...');
-            await loadNews();
-
-            // Programmer le prochain cycle après la fin du chargement
+            await loadNews(isInitial);
             if (mounted) {
-                timeoutId = setTimeout(runLoadCycle, REFRESH_INTERVAL);
+                timeoutId = setTimeout(() => runLoadCycle(false), REFRESH_INTERVAL);
             }
         };
 
-        // Lancer le premier cycle
-        runLoadCycle();
+        runLoadCycle(true); // Premier chargement
 
-        // Nettoyage
         return () => {
             mounted = false;
             clearTimeout(timeoutId);
@@ -490,11 +487,11 @@ export const useNews = () => {
 
     const forceRefresh = useCallback(() => {
         console.log('🔄 Rafraîchissement forcé');
-        if (abortControllerRef.current) {
+        if (loadingRef.current) {
             abortControllerRef.current.abort();
         }
-        loadingRef.current = false;
-        loadNews();
+        loadingRef.current = false; // Reset lock
+        loadNews(true);
     }, [loadNews]);
 
     // Recherche
