@@ -1,4 +1,6 @@
+// src/components/common/MobileMenu.js
 import React from 'react';
+import { useAuth } from '../../contexts/AuthContext';
 import {
     Activity,
     Settings,
@@ -10,6 +12,8 @@ import {
 } from 'lucide-react';
 
 const MobileMenu = (props) => {
+    const { logout } = useAuth();
+
     if (!props.isOpen) return null;
 
     const menuClass = props.darkMode ? 'bg-slate-800' : 'bg-white';
@@ -71,6 +75,7 @@ const MobileMenu = (props) => {
                         <Gift className="w-5 h-5" />
                         Boutique et Récompenses
                     </button>
+
                     <a
                         href="https://buy.stripe.com/7sYcN6fh6ez47u5ejh"
                         target="_blank"
@@ -93,7 +98,10 @@ const MobileMenu = (props) => {
                     </button>
 
                     <button
-                        onClick={() => console.log('Déconnexion')}
+                        onClick={() => {
+                            logout();
+                            props.onClose();
+                        }}
                         className="w-full p-4 rounded-xl bg-gradient-to-r from-red-500 to-pink-500 text-white font-bold flex items-center gap-2"
                     >
                         <LogOut className="w-5 h-5" />
