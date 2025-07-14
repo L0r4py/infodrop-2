@@ -2,14 +2,13 @@
 // Version adaptée pour fonctionner exactement comme la V1
 
 import React, { createContext, useState, useContext, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '../lib/supabase'; // ✅ On utilise l'instance existante
 
 const AuthContext = createContext(null);
 
 // Variables globales pour stocker la config
 let ADMIN_EMAILS = [];
 let STRIPE_LINK = '';
-let supabase = null;
 
 export const useAuth = () => {
     const context = useContext(AuthContext);
@@ -56,13 +55,10 @@ export const AuthProvider = ({ children }) => {
             STRIPE_LINK = cfg.stripeLink;
             console.log('⚙️  Config récupérée', cfg);
 
-            // Utiliser le client Supabase existant ou en créer un nouveau
-            if (!window.supabaseClient) {
-                window.supabaseClient = createClient(cfg.supabaseUrl, cfg.supabaseAnonKey);
-            }
-            supabase = window.supabaseClient;
+            // ❌ SUPPRIMÉ : On n'a plus besoin de créer Supabase ici
+            // On utilise déjà l'instance importée
 
-            console.log('✅ Supabase initialisé');
+            console.log('✅ Supabase déjà initialisé via lib/supabase.js');
 
             // Configurer le listener d'authentification
             const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
@@ -127,7 +123,7 @@ export const AuthProvider = ({ children }) => {
 
     // Fonction login adaptée de V1
     const login = async (email, inviteCode) => {
-        if (!supabase) throw new Error('Supabase non configuré');
+        // ❌ SUPPRIMÉ : Plus besoin de vérifier si supabase existe
 
         try {
             const normalizedEmail = email.toLowerCase().trim();
@@ -176,7 +172,7 @@ export const AuthProvider = ({ children }) => {
             const { error: otpError } = await supabase.auth.signInWithOtp({
                 email: normalizedEmail,
                 options: {
-                    emailRedirectTo: 'https://infodrop2.vercel.app'
+                    emailRedirectTo: window.location.origin
                 }
             });
 
@@ -203,7 +199,9 @@ export const AuthProvider = ({ children }) => {
         }
 
         // Vérification admin
-        if (isAdmin) {
+        const userIsAdmin = ADMIN_EMAILS.includes(currentUser.email?.toLowerCase());
+
+        if (userIsAdmin) {
             console.log('👑 Utilisateur admin détecté, traitement spécial...');
 
             try {
@@ -314,7 +312,6 @@ export const AuthProvider = ({ children }) => {
     };
 
     const logout = async () => {
-        if (!supabase) return;
         await supabase.auth.signOut();
     };
 
