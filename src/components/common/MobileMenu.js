@@ -1,6 +1,6 @@
 // src/components/common/MobileMenu.js
 import React from 'react';
-import { useAuth } from '../../contexts/AuthContext'; // ✅ Import du hook useAuth
+import { useAuth } from '../../contexts/AuthContext';
 import {
     Activity,
     Settings,
@@ -14,16 +14,15 @@ import {
 const MobileMenu = ({
     isOpen,
     onClose,
-    user,
-    handleSettingsClick,
-    handleParrainageClick,
-    handleRewardsClick,
-    handleDonateClick,
-    handleAboutClick,
-    handleStatsClick
+    darkMode,
+    isAdmin,
+    onShow360,
+    onShowAdmin,
+    onShowReferral,
+    onShowBadgeShop,
+    onShowAbout
 }) => {
-    // ✅ Récupération directe de la fonction logout depuis le contexte
-    const { logout } = useAuth();
+    const { logout, user } = useAuth(); // ✅ On récupère aussi user du contexte
 
     if (!isOpen) return null;
 
@@ -58,64 +57,71 @@ const MobileMenu = ({
 
                     {/* Menu items */}
                     <nav className="space-y-2">
+                        {/* INFODROP 360 */}
                         <button
                             onClick={() => {
-                                handleStatsClick();
+                                onShow360();
                                 onClose();
                             }}
                             className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                         >
                             <Activity size={20} />
-                            <span>Mes Statistiques</span>
+                            <span>INFODROP 360</span>
                         </button>
 
-                        <button
-                            onClick={() => {
-                                handleSettingsClick();
-                                onClose();
-                            }}
-                            className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                        >
-                            <Settings size={20} />
-                            <span>Paramètres</span>
-                        </button>
+                        {/* Panel Admin - Seulement si admin */}
+                        {isAdmin && (
+                            <button
+                                onClick={() => {
+                                    onShowAdmin();
+                                    onClose();
+                                }}
+                                className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                            >
+                                <Settings size={20} />
+                                <span>Panel Admin</span>
+                            </button>
+                        )}
 
+                        {/* Code de parrainage */}
                         <button
                             onClick={() => {
-                                handleParrainageClick();
+                                onShowReferral();
                                 onClose();
                             }}
                             className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                         >
                             <UserPlus size={20} />
-                            <span>Parrainer</span>
+                            <span>Code de parrainage</span>
                         </button>
 
+                        {/* Boutique et Récompenses */}
                         <button
                             onClick={() => {
-                                handleRewardsClick();
+                                onShowBadgeShop();
                                 onClose();
                             }}
                             className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                         >
                             <Gift size={20} />
-                            <span>Récompenses</span>
+                            <span>Boutique et Récompenses</span>
                         </button>
 
-                        <button
-                            onClick={() => {
-                                handleDonateClick();
-                                onClose();
-                            }}
+                        {/* Lien de donation Stripe */}
+                        <a
+                            href="https://buy.stripe.com/7sYcN6fh6ez47u5ejh"
+                            target="_blank"
+                            rel="noopener noreferrer"
                             className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                         >
                             <CircleDollarSign size={20} />
-                            <span>Faire un don</span>
-                        </button>
+                            <span>Soutenir</span>
+                        </a>
 
+                        {/* À propos */}
                         <button
                             onClick={() => {
-                                handleAboutClick();
+                                onShowAbout();
                                 onClose();
                             }}
                             className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
@@ -130,7 +136,7 @@ const MobileMenu = ({
                         {/* Bouton de déconnexion */}
                         <button
                             onClick={() => {
-                                logout(); // ✅ Appel direct de la fonction logout du contexte
+                                logout();
                                 onClose();
                             }}
                             className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400 transition-colors"
