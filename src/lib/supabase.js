@@ -23,13 +23,4 @@ export const supabase = isSupabaseConfigured()
     })
     : null;
 
-// Export pour debug (à retirer en production)
-if (process.env.NODE_ENV === 'development') {
-    console.log('Supabase config:', {
-        url: supabaseUrl ? '✓ Configuré' : '✗ Manquant',
-        key: supabaseAnonKey ? '✓ Configuré' : '✗ Manquant',
-        configured: isSupabaseConfigured()
-    });
-}
-
 export default supabase;

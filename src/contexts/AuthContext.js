@@ -40,7 +40,6 @@ export const AuthProvider = ({ children }) => {
 
     // Fonction d'initialisation (adaptée de V1)
     const initializeSupabase = async () => {
-        console.log('🔐 initializeSupabase() lancé');
         try {
             // Adapter l'URL selon l'environnement
             const apiUrl = process.env.NODE_ENV === 'development'
@@ -53,23 +52,15 @@ export const AuthProvider = ({ children }) => {
 
             ADMIN_EMAILS = cfg.adminEmails;
             STRIPE_LINK = cfg.stripeLink;
-            console.log('⚙️  Config récupérée', cfg);
-
-            // ❌ SUPPRIMÉ : On n'a plus besoin de créer Supabase ici
-            // On utilise déjà l'instance importée
-
-            console.log('✅ Supabase déjà initialisé via lib/supabase.js');
 
             // Configurer le listener d'authentification
             const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-                console.log('Auth state change:', event);
                 setSession(session);
                 const currentUser = session?.user ?? null;
                 setUser(currentUser);
                 setSessionLoaded(true);
 
                 if (event === 'SIGNED_IN' && currentUser) {
-                    console.log('✅ Événement SIGNED_IN détecté ! Chargement des données...');
                     setIsAdmin(ADMIN_EMAILS.includes(currentUser.email?.toLowerCase()));
                     await loadUserInviteData(currentUser);
                 }
@@ -99,7 +90,6 @@ export const AuthProvider = ({ children }) => {
             setIsLoading(false);
 
         } catch (err) {
-            console.error('❌ Erreur initialisation:', err);
             setSessionLoaded(true);
             setIsLoading(false);
 
@@ -194,7 +184,6 @@ export const AuthProvider = ({ children }) => {
     // Chargement des données d'invitation (copié de V1)
     const loadUserInviteData = async (currentUser) => {
         if (!currentUser || !currentUser.email) {
-            console.log('❌ Pas d\'utilisateur connecté pour charger les données d\'invitation');
             return;
         }
 
@@ -202,8 +191,6 @@ export const AuthProvider = ({ children }) => {
         const userIsAdmin = ADMIN_EMAILS.includes(currentUser.email?.toLowerCase());
 
         if (userIsAdmin) {
-            console.log('👑 Utilisateur admin détecté, traitement spécial...');
-
             try {
                 const { data: adminCode, error: adminError } = await supabase
                     .from('invitation_codes')
@@ -212,12 +199,10 @@ export const AuthProvider = ({ children }) => {
                     .maybeSingle();
 
                 if (adminError && adminError.code !== 'PGRST116') {
-                    console.error('❌ Erreur requête admin:', adminError);
                     return;
                 }
 
                 if (adminCode) {
-                    console.log('✅ Code admin existant trouvé:', adminCode.code);
                     setUserInviteData(prev => ({
                         ...prev,
                         code: adminCode.code,
@@ -229,15 +214,12 @@ export const AuthProvider = ({ children }) => {
                 return;
 
             } catch (error) {
-                console.error('❌ Erreur traitement admin:', error);
                 return;
             }
         }
 
         // Traitement pour utilisateurs normaux
         try {
-            console.log('🔄 Chargement des données d\'invitation pour:', currentUser.email);
-
             // Récupérer le code d'invitation du compte connecté
             const { data: ownCode, error: ownCodeError } = await supabase
                 .from('invitation_codes')
@@ -245,10 +227,7 @@ export const AuthProvider = ({ children }) => {
                 .ilike('owner_email', currentUser.email.toLowerCase())
                 .maybeSingle();
 
-            if (ownCodeError && ownCodeError.code !== 'PGRST116') {
-                console.error('❌ Erreur récupération code proprio:', ownCodeError);
-            } else if (ownCode) {
-                console.log('✅ Code proprio récupéré:', ownCode);
+            if (!ownCodeError && ownCode) {
                 setUserInviteData(prev => ({
                     ...prev,
                     code: ownCode.code,
@@ -264,10 +243,7 @@ export const AuthProvider = ({ children }) => {
                 .ilike('used_by_email', currentUser.email.toLowerCase())
                 .maybeSingle();
 
-            if (usedCodeError && usedCodeError.code !== 'PGRST116') {
-                console.error('❌ Erreur récupération parrain:', usedCodeError);
-            } else if (usedCode) {
-                console.log('✅ Parrain récupéré:', usedCode);
+            if (!usedCodeError && usedCode) {
                 setUserInviteData(prev => ({
                     ...prev,
                     parrainEmail: usedCode.owner_email
@@ -275,7 +251,7 @@ export const AuthProvider = ({ children }) => {
             }
 
         } catch (error) {
-            console.error("❌ Erreur générale lors du chargement des données d'invitation:", error);
+            // Erreur silencieuse
         }
     };
 
@@ -299,14 +275,12 @@ export const AuthProvider = ({ children }) => {
             const result = await response.json();
 
             if (result.success) {
-                console.log('✅ Code généré:', result.code);
                 return result.code;
             }
 
             throw new Error(result.error || 'Erreur lors de la génération');
 
         } catch (error) {
-            console.error('❌ Erreur génération code:', error);
             throw error;
         }
     };
