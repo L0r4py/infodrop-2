@@ -1,6 +1,6 @@
 // src/components/common/MobileMenu.js
 import React from 'react';
-import { useAuth } from '../../contexts/AuthContext'; // ✅ Import du hook useAuth
+import { useAuth } from '../../contexts/AuthContext';
 import {
     Activity,
     Settings,
@@ -11,22 +11,31 @@ import {
     LogOut,
 } from 'lucide-react';
 
-const MobileMenu = (props) => {
-    // ✅ Récupération de la fonction logout et de l'utilisateur depuis le contexte
-    const { logout, user } = useAuth();
+const MobileMenu = ({
+    isOpen,
+    onClose,
+    darkMode,
+    isAdmin,
+    onShow360,
+    onShowAdmin,
+    onShowReferral,
+    onShowBadgeShop,
+    onShowAbout
+}) => {
+    const { logout, user } = useAuth(); // ✅ On récupère aussi user du contexte
 
-    if (!props.isOpen) return null;
+    if (!isOpen) return null;
 
     return (
         <>
             {/* Overlay sombre */}
             <div
                 className="fixed inset-0 bg-black bg-opacity-50 z-40"
-                onClick={props.onClose}
+                onClick={onClose}
             />
 
             {/* Menu mobile */}
-            <div className={`fixed right-0 top-0 h-full w-64 bg-white dark:bg-gray-800 shadow-lg z-50 transform transition-transform duration-300 ${props.isOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+            <div className={`fixed right-0 top-0 h-full w-64 bg-white dark:bg-gray-800 shadow-lg z-50 transform transition-transform duration-300 ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}>
                 <div className="p-4">
                     {/* En-tête avec infos utilisateur */}
                     <div className="mb-6 pb-4 border-b dark:border-gray-700">
@@ -35,7 +44,7 @@ const MobileMenu = (props) => {
                                 {user?.username || 'Utilisateur'}
                             </h3>
                             <button
-                                onClick={props.onClose}
+                                onClick={onClose}
                                 className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
                             >
                                 ✕
@@ -51,8 +60,8 @@ const MobileMenu = (props) => {
                         {/* INFODROP 360 */}
                         <button
                             onClick={() => {
-                                props.onShow360();
-                                props.onClose();
+                                onShow360();
+                                onClose();
                             }}
                             className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                         >
@@ -61,11 +70,11 @@ const MobileMenu = (props) => {
                         </button>
 
                         {/* Panel Admin - Seulement si admin */}
-                        {props.isAdmin && (
+                        {isAdmin && (
                             <button
                                 onClick={() => {
-                                    props.onShowAdmin();
-                                    props.onClose();
+                                    onShowAdmin();
+                                    onClose();
                                 }}
                                 className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                             >
@@ -77,8 +86,8 @@ const MobileMenu = (props) => {
                         {/* Code de parrainage */}
                         <button
                             onClick={() => {
-                                props.onShowReferral();
-                                props.onClose();
+                                onShowReferral();
+                                onClose();
                             }}
                             className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                         >
@@ -89,8 +98,8 @@ const MobileMenu = (props) => {
                         {/* Boutique et Récompenses */}
                         <button
                             onClick={() => {
-                                props.onShowBadgeShop();
-                                props.onClose();
+                                onShowBadgeShop();
+                                onClose();
                             }}
                             className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                         >
@@ -103,7 +112,7 @@ const MobileMenu = (props) => {
                             href="https://buy.stripe.com/7sYcN6fh6ez47u5ejh"
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors block"
+                            className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                         >
                             <CircleDollarSign size={20} />
                             <span>Soutenir</span>
@@ -112,8 +121,8 @@ const MobileMenu = (props) => {
                         {/* À propos */}
                         <button
                             onClick={() => {
-                                props.onShowAbout();
-                                props.onClose();
+                                onShowAbout();
+                                onClose();
                             }}
                             className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                         >
@@ -127,8 +136,8 @@ const MobileMenu = (props) => {
                         {/* Bouton de déconnexion */}
                         <button
                             onClick={() => {
-                                logout(); // ✅ Appel direct de la fonction logout
-                                props.onClose();
+                                logout();
+                                onClose();
                             }}
                             className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400 transition-colors"
                         >
