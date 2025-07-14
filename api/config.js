@@ -1,5 +1,5 @@
 // api/config.js
-// NOUVEAU RÔLE : Configuration UNIQUE pour le BACKEND (CRON, etc.)
+// RÔLE : Configuration UNIQUE pour le BACKEND (CRON, etc.)
 
 import { createClient } from '@supabase/supabase-js';
 
@@ -9,7 +9,6 @@ const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
 
 // Vérification cruciale
 if (!supabaseUrl || !supabaseKey) {
-    // Cette erreur apparaîtra dans les logs Vercel si les variables sont manquantes
     throw new Error('Variables Supabase pour le backend manquantes (SUPABASE_URL, SUPABASE_SERVICE_KEY)');
 }
 
