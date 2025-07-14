@@ -25,6 +25,7 @@ export const AuthProvider = ({ children }) => {
     const [session, setSession] = useState(null);
     const [isAdmin, setIsAdmin] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
+    const [rateLimitEndTime, setRateLimitEndTime] = useState(null);
 
     useEffect(() => {
         if (!isSupabaseConfigured()) {
@@ -138,8 +139,8 @@ export const AuthProvider = ({ children }) => {
             const { data, error } = await supabase.auth.signInWithOtp({
                 email: normalizedEmail,
                 options: {
-                    emailRedirectTo: window.location.origin,
-                    shouldCreateUser: !!normalizedCode // Créer l'user seulement si code fourni
+                    emailRedirectTo: window.location.origin
+                    // On retire shouldCreateUser qui cause des problèmes
                 }
             });
 
@@ -149,6 +150,12 @@ export const AuthProvider = ({ children }) => {
                 // Nettoyer en cas d'erreur
                 sessionStorage.removeItem('pending_invite_code');
                 sessionStorage.removeItem('pending_invite_email');
+
+                // Gérer l'erreur de rate limiting
+                if (error.message?.includes('For security purposes')) {
+                    const seconds = error.message.match(/(\d+) seconds/)?.[1] || '60';
+                    throw new Error(`Trop de tentatives. Veuillez attendre ${seconds} secondes avant de réessayer.`);
+                }
 
                 // Si l'erreur indique que l'user n'existe pas et pas de code
                 if (!normalizedCode && (error.message?.includes('not found') || error.message?.includes('not exist'))) {
