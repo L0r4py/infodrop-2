@@ -1,9 +1,10 @@
 // Fichier : api/cron-fetch-articles.js
-// Version ULTIME 2.0 : Double dé-doublonnage sur link ET guid.
+// VERSION FINALE CORRIGÉE (TA logique + MA correction de connexion)
 
-import { createClient } from '@supabase/supabase-js';
+// CHANGEMENT 1: On n'importe plus createClient, car la connexion se fait dans config.js
+import { supabaseAdmin } from './config.js'; // ✅ On importe notre client pré-configuré
 import RssParser from 'rss-parser';
-import { newsSources } from './newsSources.js';
+import { newsSources } from './newsSources.js'; // ✅ On garde ta source de données locale
 
 export default async function handler(req, res) {
     if (req.headers['authorization'] !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -14,12 +15,11 @@ export default async function handler(req, res) {
         console.log('Cron job ULTIME 2.0 démarré - Double dédoublonnage activé.');
         const startTime = Date.now();
 
-        const supabase = createClient(
-            process.env.REACT_APP_SUPABASE_URL,
-            process.env.REACT_APP_SUPABASE_SERVICE_KEY
-        );
+        // CHANGEMENT 2: Le bloc createClient() qui plantait est entièrement supprimé d'ici.
+
         const parser = new RssParser({ timeout: 8000 });
 
+        // ✅ TOUTE TA LOGIQUE CI-DESSOUS EST CONSERVÉE À 100%
         const fetchFeed = async (source) => {
             if (!source || !source.url) return [];
 
@@ -63,11 +63,10 @@ export default async function handler(req, res) {
             console.log(`📊 Batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(newsSources.length / BATCH_SIZE)} traité`);
         }
 
-        // ✅ LA CORRECTION DÉFINITIVE 2.0 : DOUBLE DÉDOUBLONNAGE
         console.log(`📋 Avant dédoublonnage: ${articlesFromFeeds.length} articles trouvés.`);
 
         const uniqueArticlesMap = new Map();
-        const seenGuids = new Set(); // 🔥 On ajoute un Set pour suivre les GUIDs
+        const seenGuids = new Set();
         let duplicateLinks = 0;
         let duplicateGuids = 0;
 
@@ -75,12 +74,10 @@ export default async function handler(req, res) {
             const isLinkDuplicate = uniqueArticlesMap.has(article.link);
             const isGuidDuplicate = seenGuids.has(article.guid);
 
-            // On ne garde l'article que si AUCUN des deux n'est un doublon
             if (!isLinkDuplicate && !isGuidDuplicate) {
                 uniqueArticlesMap.set(article.link, article);
                 seenGuids.add(article.guid);
             } else {
-                // Stats pour debug
                 if (isLinkDuplicate) duplicateLinks++;
                 if (isGuidDuplicate) duplicateGuids++;
             }
@@ -95,17 +92,14 @@ export default async function handler(req, res) {
             return res.status(200).json({
                 success: true,
                 message: 'Aucun nouvel article unique trouvé.',
-                stats: {
-                    articlesChecked: articlesFromFeeds.length,
-                    duplicatesRemoved: duplicateLinks + duplicateGuids
-                }
+                stats: { articlesChecked: articlesFromFeeds.length, duplicatesRemoved: duplicateLinks + duplicateGuids }
             });
         }
 
         console.log(`📝 ${allArticlesToInsert.length} articles à insérer dans Supabase...`);
 
-        // On garde l'upsert avec onConflict sur 'link' comme sécurité supplémentaire
-        const { data, error: dbError } = await supabase
+        // CHANGEMENT 3: On utilise "supabaseAdmin" (qui vient de config.js) au lieu de "supabase"
+        const { data, error: dbError } = await supabaseAdmin
             .from('articles')
             .upsert(allArticlesToInsert, { onConflict: 'link' })
             .select();
@@ -129,11 +123,7 @@ export default async function handler(req, res) {
                 duration: duration,
                 articlesProcessed: articlesFromFeeds.length,
                 articlesInserted: insertedCount,
-                duplicatesRemoved: {
-                    byLink: duplicateLinks,
-                    byGuid: duplicateGuids,
-                    total: duplicateLinks + duplicateGuids
-                }
+                duplicatesRemoved: { byLink: duplicateLinks, byGuid: duplicateGuids, total: duplicateLinks + duplicateGuids }
             }
         });
 
