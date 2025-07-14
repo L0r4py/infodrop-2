@@ -1,10 +1,20 @@
-// api/cron-fetch-articles.js
-// Logique de parse-rss.js (V1) adaptée pour la nouvelle config
+// Fichier : /api/parse-rss.js
+// Version 24.0 - OPTI Promise.all + Timeout hard + Logs (Juillet 2025)
 
-import { supabaseAdmin } from './config.js'; // ✅ On utilise la config centralisée
 import Parser from 'rss-parser';
+import { createClient } from '@supabase/supabase-js';
 
-// La liste des flux de la V1
+const supabase = createClient(
+    process.env.SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_KEY
+);
+
+const parser = new Parser({
+    timeout: 10000,
+    headers: { 'User-Agent': 'INFODROP RSS Parser/1.0' }
+});
+
+// Ta liste de flux RSS complète et organisée
 const RSS_FEEDS = [
     // === GENERALISTES ===
     { name: 'France Info', url: 'https://www.francetvinfo.fr/titres.rss', orientation: 'centre', tags: ['national'] },
@@ -122,53 +132,178 @@ const RSS_FEEDS = [
     { name: 'CNRS Le Journal', url: 'https://lejournal.cnrs.fr/rss', orientation: 'neutre', tags: ['sciences'] }
 ];
 
-const parser = new Parser({ timeout: 10000 });
+function decodeHtmlEntities(str) {
+    if (!str) return '';
+    return str.replace(/&#(\d+);/g, (match, dec) => String.fromCharCode(dec))
+        .replace(/&quot;/g, '"')
+        .replace(/&apos;/g, "'")
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&eacute;/g, 'é')
+        .replace(/&egrave;/g, 'è')
+        .replace(/&ecirc;/g, 'ê')
+        .replace(/&rsquo;/g, "'")
+        .replace(/&hellip;/g, '…')
+        // 🇫🇷 FIX ENCODAGE GOUVERNEMENT
+        .replace(/�/g, 'é')
+        .replace(/ç/g, 'ç')
+        .replace(/à/g, 'à')
+        .replace(/è/g, 'è')
+        .replace(/ê/g, 'ê')
+        .replace(/ô/g, 'ô')
+        .replace(/û/g, 'û')
+        .replace(/â/g, 'â')
+        .replace(/î/g, 'î')
+        .replace(/ù/g, 'ù')
+        .replace(/É/g, 'É')
+        .replace(/À/g, 'À')
+        .replace(/È/g, 'È');
+}
+
+const FILTER_RULES = { 'Le Parisien': ['météo', 'horoscope'] };
+const GLOBAL_FILTER_KEYWORDS = [
+    'horoscope', 'astrologie', 'loterie', 'programme tv', 'recette', 'mots croisés', 'sudoku'
+];
+
+function createSummary(text) {
+    if (!text) return '';
+    text = decodeHtmlEntities(text);
+    const replacements = { '’': "'", '–': '-', '…': '...', '"': '"', '&': '&', '<': '<', '>': '>' };
+    let cleanText = text.replace(/(&#?[a-z0-9]+;)/gi, (match) => replacements[match] || '');
+    cleanText = cleanText.replace(/<[^>]*>/g, ' ').replace(/\s\s+/g, ' ').trim();
+    if (cleanText.length > 180) {
+        cleanText = cleanText.substring(0, 177) + '...';
+    }
+    return cleanText;
+}
+
+function shouldFilterArticle(title, source) {
+    const lowerTitle = (title || '').toLowerCase();
+    if (GLOBAL_FILTER_KEYWORDS.some(keyword => lowerTitle.includes(keyword))) return true;
+    const sourceFilters = FILTER_RULES[source];
+    if (sourceFilters && sourceFilters.some(keyword => lowerTitle.includes(keyword))) return true;
+    return false;
+}
+
+// --- Fetch RSS avec timeout hard (5s) ---
+function fetchRssWithTimeout(feed, timeout = 5000) {
+    return new Promise((resolve) => {
+        let finished = false;
+        const timer = setTimeout(() => {
+            if (!finished) {
+                finished = true;
+                resolve({ feed, error: `Timeout after ${timeout}ms` });
+            }
+        }, timeout);
+
+        parser.parseURL(feed.url)
+            .then(feedData => {
+                if (!finished) {
+                    finished = true;
+                    clearTimeout(timer);
+                    resolve({ feed, feedData });
+                }
+            })
+            .catch(e => {
+                if (!finished) {
+                    finished = true;
+                    clearTimeout(timer);
+                    resolve({ feed, error: e.message });
+                }
+            });
+    });
+}
 
 export default async function handler(req, res) {
     if (req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {
         return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    try {
-        const fetchPromises = RSS_FEEDS.map(feed => parser.parseURL(feed.url).catch(e => {
-            console.warn(`Erreur parsing ${feed.name}: ${e.message}`);
-            return null; // En cas d'erreur, on retourne null
-        }));
+    const start = Date.now();
+    console.log('🚀 [INFODROP] Parsing RSS - OPTI Promise.all + Timeout 5s');
 
-        const results = await Promise.all(fetchPromises);
-        let articlesToInsert = [];
-        const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    // Traite tout EN PARALLÈLE
+    const results = await Promise.allSettled(
+        RSS_FEEDS.map(feed => fetchRssWithTimeout(feed, 5000))
+    );
 
-        results.forEach((feedData, index) => {
-            if (!feedData) return;
-            const sourceInfo = RSS_FEEDS[index];
-            feedData.items.forEach(item => {
-                const pubDate = item.isoDate ? new Date(item.isoDate) : new Date();
-                if (pubDate >= twentyFourHoursAgo && item.link && item.title) {
-                    articlesToInsert.push({
-                        // Attention: le nom des colonnes doit correspondre à ta table `articles`
-                        title: item.title,
-                        link: item.link,
-                        pubDate: pubDate.toISOString(),
-                        source_name: sourceInfo.name,
-                        orientation: sourceInfo.orientation,
-                        category: sourceInfo.tags[0] || 'généraliste',
-                        tags: sourceInfo.tags,
-                        guid: item.guid || item.link
-                    });
-                }
-            });
-        });
+    let articlesToInsert = [];
+    let filteredCount = 0;
+    let fluxOk = 0, fluxTimeout = 0, fluxError = 0;
+    const now = new Date();
 
-        // Dé-doublonnage avant insertion
-        const uniqueArticles = Array.from(new Map(articlesToInsert.map(a => [a.link, a])).values());
-
-        if (uniqueArticles.length > 0) {
-            await supabaseAdmin.from('articles').upsert(uniqueArticles, { onConflict: 'link' });
+    for (const result of results) {
+        if (result.status !== "fulfilled" || !result.value) {
+            fluxError++;
+            continue;
         }
+        const { feed, feedData, error } = result.value;
+        if (error) {
+            if (error.includes("Timeout")) fluxTimeout++;
+            else fluxError++;
+            console.error(`❌ [RSS] ${feed.name}: ${error}`);
+            continue;
+        }
+        if (!feedData?.items) continue;
+        fluxOk++;
 
-        res.status(200).json({ success: true, inserted: uniqueArticles.length });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
+        for (const item of feedData.items) {
+            if (shouldFilterArticle(item.title, feed.name)) {
+                filteredCount++;
+                continue;
+            }
+
+            let pubDate = item.isoDate ? new Date(item.isoDate) : new Date(now);
+            if (pubDate > now) pubDate = new Date(now);
+
+            const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+            if (pubDate >= twentyFourHoursAgo && item.link) {
+                let titleToUse = item.title;
+                if (feed.name === 'Konbini') {
+                    titleToUse = decodeHtmlEntities(item.title);
+                }
+                articlesToInsert.push({
+                    resume: createSummary(titleToUse || item.contentSnippet),
+                    source: feed.name,
+                    url: item.link,
+                    heure: pubDate.toISOString(),
+                    orientation: feed.orientation,
+                    tags: feed.tags || null
+                });
+            }
+        }
     }
+
+    // Insertion en base
+    let insertedCount = 0;
+    if (articlesToInsert.length > 0) {
+        const { data, error } = await supabase
+            .from('actu')
+            .upsert(articlesToInsert, { onConflict: 'url' })
+            .select();
+
+        if (error) {
+            console.error('Erreur insertion Supabase:', error);
+        } else {
+            insertedCount = data ? data.length : 0;
+        }
+    }
+
+    const duration = ((Date.now() - start) / 1000).toFixed(2);
+
+    // Le nouveau message de log, beaucoup plus informatif
+    console.log(`✅ [INFODROP] Parsing terminé en ${duration}s. Flux OK: ${fluxOk}, timeouts: ${fluxTimeout}, erreurs: ${fluxError}. ${articlesToInsert.length} articles trouvés, ${insertedCount} insérés, ${filteredCount} filtrés.`);
+
+    // La nouvelle réponse JSON
+    res.status(200).json({
+        success: true,
+        flux_ok: fluxOk,
+        flux_timeout: fluxTimeout,
+        flux_error: fluxError,
+        articles_found: articlesToInsert.length,
+        articles_inserted: insertedCount,
+        articles_filtered: filteredCount,
+        duration_seconds: duration
+    });
 }
