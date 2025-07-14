@@ -1,35 +1,22 @@
 // src/lib/supabase.js
-// Configuration Supabase pour React (Create React App)
+// VERSION FINALE DÉFINITIVE - Utilise le préfixe REACT_APP_
 
 import { createClient } from '@supabase/supabase-js';
 
-// Variables d'environnement React (commencent par REACT_APP_)
+// Lecture des variables avec le préfixe standard de Create React App
 const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
 const supabaseAnonKey = process.env.REACT_APP_SUPABASE_ANON_KEY;
 
-// Vérification de la configuration
-export const isSupabaseConfigured = () => {
-    return !!(supabaseUrl && supabaseAnonKey);
-};
-
-// Création du client Supabase (uniquement si configuré)
-export const supabase = isSupabaseConfigured()
+// On exporte le client Supabase. Il sera `null` si les clés sont manquantes.
+export const supabase = (supabaseUrl && supabaseAnonKey)
     ? createClient(supabaseUrl, supabaseAnonKey, {
         auth: {
             autoRefreshToken: true,
             persistSession: true,
-            detectSessionInUrl: true
-        }
+            detectSessionInUrl: true,
+        },
     })
     : null;
 
-// Export pour debug (à retirer en production)
-if (process.env.NODE_ENV === 'development') {
-    console.log('Supabase config:', {
-        url: supabaseUrl ? '✓ Configuré' : '✗ Manquant',
-        key: supabaseAnonKey ? '✓ Configuré' : '✗ Manquant',
-        configured: isSupabaseConfigured()
-    });
-}
-
-export default supabase;
+// Helper pour vérifier si la configuration est valide
+export const isSupabaseConfigured = !!supabase;
