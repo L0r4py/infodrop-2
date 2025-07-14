@@ -1,5 +1,5 @@
 // src/hooks/useNews.js
-// VERSION FINALE - AVEC RECHERCHE
+// VERSION FINALE CORRIGÉE - BOUCLE INFINIE SUPPRIMÉE
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
@@ -60,7 +60,8 @@ export const useNews = () => {
     }, []);
 
     // ✅ FONCTION PRINCIPALE : Charger les news PUIS les stats
-    const loadNews = useCallback(async () => {
+    // 🔴 CORRECTION : Retrait de 'news' des dépendances pour éviter la boucle infinie
+    const loadNews = useCallback(async (isInitialLoad = false) => {
         // 🛡️ Si un chargement est déjà en cours, on abandonne
         if (loadingRef.current) {
             console.log('⚠️ Chargement déjà en cours, abandon...');
@@ -77,7 +78,7 @@ export const useNews = () => {
         abortControllerRef.current = new AbortController();
 
         // On met isLoading à true seulement si c'est le premier chargement
-        if (news.length === 0) {
+        if (isInitialLoad) {
             setIsLoading(true);
         }
         setError(null);
@@ -178,27 +179,27 @@ export const useNews = () => {
             loadingRef.current = false;
             setIsLoading(false);
         }
-    }, [fetchGlobalStats, news]);
+    }, [fetchGlobalStats]); // 🔴 CORRECTION : Retrait de 'news' des dépendances
 
     // ✅ UN SEUL useEffect POUR GÉRER TOUT LE CYCLE DE VIE
     useEffect(() => {
         let timeoutId;
         let mounted = true;
 
-        const runLoadCycle = async () => {
+        const runLoadCycle = async (isInitial) => {
             if (!mounted) return;
 
             console.log('🔄 Cycle de chargement...');
-            await loadNews();
+            await loadNews(isInitial);
 
             // Programmer le prochain cycle SEULEMENT après la fin du chargement
             if (mounted) {
-                timeoutId = setTimeout(runLoadCycle, REFRESH_INTERVAL);
+                timeoutId = setTimeout(() => runLoadCycle(false), REFRESH_INTERVAL);
             }
         };
 
         // Lancer le premier cycle
-        runLoadCycle();
+        runLoadCycle(true);
 
         // Nettoyage
         return () => {
@@ -377,7 +378,12 @@ export const useNews = () => {
                 const { error } = await supabase.rpc('increment_views', { article_id: id });
 
                 if (error && error.code === '42883') {
-                    const article = news.find(n => n.id === id);
+                    const { data: article } = await supabase
+                        .from('articles')
+                        .select('views')
+                        .eq('id', id)
+                        .single();
+
                     if (article) {
                         await supabase
                             .from('articles')
@@ -389,7 +395,7 @@ export const useNews = () => {
                 console.error('Erreur incrémentation vues:', err);
             }
         }
-    }, [news]);
+    }, []); // Correction : retrait de 'news' des dépendances
 
     // ✅ FONCTION : Incrémenter les clics
     const incrementClicks = useCallback(async (id) => {
@@ -405,7 +411,12 @@ export const useNews = () => {
 
         if (USE_SUPABASE && isSupabaseConfigured() && supabase) {
             try {
-                const article = news.find(n => n.id === id);
+                const { data: article } = await supabase
+                    .from('articles')
+                    .select('clicks')
+                    .eq('id', id)
+                    .single();
+
                 if (article) {
                     await supabase
                         .from('articles')
@@ -416,7 +427,7 @@ export const useNews = () => {
                 console.error('Erreur incrémentation clics:', err);
             }
         }
-    }, [news]);
+    }, []); // Correction : retrait de 'news' des dépendances
 
     // ✅ LOGIQUE DE FILTRAGE MISE À JOUR
     const filteredNews = useMemo(() => {
@@ -495,7 +506,7 @@ export const useNews = () => {
             abortControllerRef.current.abort();
         }
         loadingRef.current = false;
-        loadNews();
+        loadNews(true); // Pass true for isInitialLoad
     }, [loadNews]);
 
     // Recherche
