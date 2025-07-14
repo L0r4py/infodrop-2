@@ -173,7 +173,7 @@ export const AuthProvider = ({ children }) => {
             const { error: otpError } = await supabase.auth.signInWithOtp({
                 email: normalizedEmail,
                 options: {
-                    emailRedirectTo: window.location.origin
+                    emailRedirectTo: 'https://infodrop2.vercel.app'
                 }
             });
 
