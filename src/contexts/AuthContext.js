@@ -56,8 +56,11 @@ export const AuthProvider = ({ children }) => {
             STRIPE_LINK = cfg.stripeLink;
             console.log('⚙️  Config récupérée', cfg);
 
-            // Créer le client Supabase
-            supabase = createClient(cfg.supabaseUrl, cfg.supabaseAnonKey);
+            // Utiliser le client Supabase existant ou en créer un nouveau
+            if (!window.supabaseClient) {
+                window.supabaseClient = createClient(cfg.supabaseUrl, cfg.supabaseAnonKey);
+            }
+            supabase = window.supabaseClient;
 
             console.log('✅ Supabase initialisé');
 
