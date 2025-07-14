@@ -1,26 +1,23 @@
 // src/lib/supabase.js
-// Configuration Supabase pour React (Create React App)
+// CONFIGURATION UNIQUE ET FINALE POUR LE FRONTEND (REACT)
 
 import { createClient } from '@supabase/supabase-js';
 
-// Variables d'environnement React (commencent par REACT_APP_)
+// Lecture des variables d'environnement préfixées par REACT_APP_
 const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
 const supabaseAnonKey = process.env.REACT_APP_SUPABASE_ANON_KEY;
 
-// Vérification de la configuration
-export const isSupabaseConfigured = () => {
-    return !!(supabaseUrl && supabaseAnonKey);
-};
-
-// Création du client Supabase (uniquement si configuré)
-export const supabase = isSupabaseConfigured()
+// On exporte une seule chose : le client Supabase pour le frontend.
+// S'il ne peut pas être créé, on exporte `null`.
+export const supabase = (supabaseUrl && supabaseAnonKey)
     ? createClient(supabaseUrl, supabaseAnonKey, {
         auth: {
             autoRefreshToken: true,
             persistSession: true,
-            detectSessionInUrl: true
-        }
+            detectSessionInUrl: true,
+        },
     })
     : null;
 
-export default supabase;
+// Helper pour vérifier si la configuration est valide (utilisé dans AuthContext)
+export const isSupabaseConfigured = !!supabase;
